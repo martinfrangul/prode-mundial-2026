@@ -7,7 +7,8 @@ import {
   setDoc, 
   query, 
   where, 
-  orderBy 
+  orderBy,
+  writeBatch
 } from "firebase/firestore";
 import { Match, Prediction, UserProfile } from "@/types";
 
@@ -74,4 +75,27 @@ export async function savePrediction(userId: string, matchId: string, scoreA: nu
     predictedScoreB: scoreB,
     pointsEarned: null
   }, { merge: true });
+}
+
+export async function updateUserDisplayName(userId: string, displayName: string) {
+  const userRef = doc(db, "users", userId);
+  await setDoc(userRef, { displayName }, { merge: true });
+}
+
+export async function deleteUserAccountData(userId: string) {
+  const batch = writeBatch(db);
+  
+  // 1. Delete user profile doc
+  const userRef = doc(db, "users", userId);
+  batch.delete(userRef);
+  
+  // 2. Query and delete user predictions
+  const predictionsRef = collection(db, "predictions");
+  const q = query(predictionsRef, where("userId", "==", userId));
+  const predictionsSnap = await getDocs(q);
+  predictionsSnap.docs.forEach((doc) => {
+    batch.delete(doc.ref);
+  });
+  
+  await batch.commit();
 }

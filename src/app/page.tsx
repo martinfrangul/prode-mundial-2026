@@ -15,12 +15,12 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Match, Prediction, UserProfile } from "@/types";
-import { getMatches, getUserPredictions } from "@/lib/db";
+import { getMatches, getUserPredictions, updateUserDisplayName, deleteUserAccountData } from "@/lib/db";
 import MatchCard from "@/components/predictions/MatchCard";
 import Leaderboard from "@/components/leaderboard/Leaderboard";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
-import { collection, doc, getDocs, writeBatch, query, orderBy } from "firebase/firestore";
+import { collection, doc, getDocs, getDoc, writeBatch, query, orderBy } from "firebase/firestore";
 
 export default function Home() {
   const { user, loading, error, signInWithGoogle, logout } = useAuth();
@@ -28,7 +28,7 @@ export default function Home() {
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"predictions" | "leaderboard">("predictions");
+  const [activeTab, setActiveTab] = useState<"predictions" | "leaderboard" | "profile">("predictions");
 
   // Syncing states
   const [isSyncing, setIsSyncing] = useState(false);
@@ -44,6 +44,16 @@ export default function Home() {
   const [groupFilter, setGroupFilter] = useState<string>("all");
   const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "finished">("all");
 
+  // Profile states
+  const [customDisplayName, setCustomDisplayName] = useState(user?.displayName || "");
+  const [isSavingName, setIsSavingName] = useState(false);
+  const [nameSaved, setNameSaved] = useState(false);
+
+  // Delete account states
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const fetchData = async () => {
     if (!user) return;
     setIsLoadingData(true);
@@ -53,25 +63,22 @@ export default function Home() {
       const fetchedPredictions = await getUserPredictions(user.uid);
       setMatches(fetchedMatches);
       setPredictions(fetchedPredictions);
+
+      // Load name from user profile
+      const userRef = doc(db, "users", user.uid);
+      const userSnap = await getDoc(userRef);
+      if (userSnap.exists()) {
+        const data = userSnap.data();
+        if (data.displayName) {
+          setCustomDisplayName(data.displayName);
+        }
+      }
     } catch (err: any) {
       console.error("Error fetching data", err);
       setFetchError(`Error de Firestore: ${err?.message || err?.toString()}`);
     } finally {
       setIsLoadingData(false);
     }
-  };
-
-  const handlePredictionSaved = (updatedPrediction: Prediction) => {
-    setPredictions((prev) => {
-      const idx = prev.findIndex((p) => p.matchId === updatedPrediction.matchId);
-      if (idx > -1) {
-        const next = [...prev];
-        next[idx] = updatedPrediction;
-        return next;
-      } else {
-        return [...prev, updatedPrediction];
-      }
-    });
   };
 
   useEffect(() => {
@@ -111,6 +118,19 @@ export default function Home() {
   const changeStatusFilter = (val: "all" | "pending" | "finished") => {
     setStatusFilter(val);
     localStorage.setItem("prode_status_filter", val);
+  };
+
+  const handlePredictionSaved = (updatedPrediction: Prediction) => {
+    setPredictions((prev) => {
+      const idx = prev.findIndex((p) => p.matchId === updatedPrediction.matchId);
+      if (idx > -1) {
+        const next = [...prev];
+        next[idx] = updatedPrediction;
+        return next;
+      } else {
+        return [...prev, updatedPrediction];
+      }
+    });
   };
 
   // Score calculation logic:
@@ -309,6 +329,67 @@ export default function Home() {
     }
   };
 
+  const handleUpdateName = async () => {
+    if (!user || !customDisplayName.trim()) return;
+    setIsSavingName(true);
+    setNameSaved(false);
+    try {
+      // 1. Update Firestore
+      await updateUserDisplayName(user.uid, customDisplayName.trim());
+      
+      // 2. Update Firebase Auth Profile (if currentUser is available)
+      const { auth } = await import("@/lib/firebase");
+      const { updateProfile } = await import("firebase/auth");
+      if (auth.currentUser) {
+        await updateProfile(auth.currentUser, { displayName: customDisplayName.trim() });
+      }
+      
+      setNameSaved(true);
+      setTimeout(() => setNameSaved(false), 3000);
+    } catch (err: any) {
+      console.error("Error updating display name:", err);
+      setSyncError("No se pudo actualizar el nombre. Intenta de nuevo.");
+    } finally {
+      setIsSavingName(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!user || !confirmDelete || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      // 1. Delete Firestore data (profile + predictions)
+      await deleteUserAccountData(user.uid);
+      
+      // 2. Try to delete from Firebase Auth
+      try {
+        const { auth } = await import("@/lib/firebase");
+        const { deleteUser } = await import("firebase/auth");
+        
+        if (auth.currentUser) {
+          await deleteUser(auth.currentUser);
+        }
+      } catch (authErr) {
+        console.warn("Auth user deletion failed (requires recent login), signing out instead", authErr);
+        // Fallback: since Firestore data is deleted, signing them out is sufficient to clear their account in-app
+        const { auth } = await import("@/lib/firebase");
+        const { signOut } = await import("firebase/auth");
+        await signOut(auth);
+      }
+      
+      // Unmount delete modal safely
+      setShowDeleteModal(false);
+      setConfirmDelete(false);
+    } catch (err: any) {
+      console.error("Error during account deletion process:", err);
+      setSyncError(`Error al eliminar la cuenta: ${err.message || err.toString()}`);
+      setShowDeleteModal(false);
+      setConfirmDelete(false);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
   // Get unique groups from matches
   const availableGroups = Array.from(
     new Set(matches.map((m) => m.group).filter(Boolean))
@@ -420,7 +501,7 @@ export default function Home() {
           </Link>
           <div className="flex items-center gap-2">
             <img src={user.photoURL || ""} alt="Avatar" className="w-8 h-8 rounded-full border border-card-border" />
-            <span className="text-sm font-medium hidden sm:block">{user.displayName}</span>
+            <span className="text-sm font-medium hidden sm:block">{customDisplayName || user.displayName}</span>
           </div>
           <button onClick={logout} className="p-2 rounded-full hover:bg-foreground/5 transition-colors cursor-pointer">
             <LogIn className="w-5 h-5 text-foreground/70" />
@@ -473,7 +554,7 @@ export default function Home() {
               <div className="flex gap-2.5 items-start">
                 <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
                 <div>
-                  <h4 className="font-bold text-sm">Error en la Sincronización</h4>
+                  <h4 className="font-bold text-sm">Mensaje del Sistema</h4>
                   <p className="text-xs opacity-90 mt-1">{syncError}</p>
                 </div>
               </div>
@@ -489,7 +570,7 @@ export default function Home() {
 
         {/* Tab Selector & Sync controls */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-          <div className="flex bg-card/45 border border-card-border p-1 rounded-2xl max-w-sm w-full sm:w-auto relative">
+          <div className="flex bg-card/45 border border-card-border p-1 rounded-2xl max-w-md w-full sm:w-auto relative">
             <button
               onClick={() => setActiveTab("predictions")}
               className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-semibold transition-colors duration-300 flex items-center justify-center gap-2 relative z-10 cursor-pointer ${
@@ -523,6 +604,24 @@ export default function Home() {
                 <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
               </svg>
               Clasificación
+            </button>
+            <button
+              onClick={() => setActiveTab("profile")}
+              className={`flex-1 py-2.5 px-4 rounded-xl text-sm font-semibold transition-colors duration-300 flex items-center justify-center gap-2 relative z-10 cursor-pointer ${
+                activeTab === "profile" ? "text-white" : "text-foreground/70 hover:text-foreground"
+              }`}
+            >
+              {activeTab === "profile" && (
+                <motion.div
+                  layoutId="activeTabPill"
+                  className="absolute inset-0 bg-gold rounded-xl -z-10 shadow-md shadow-gold/20"
+                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                />
+              )}
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-4 h-4">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              </svg>
+              Mi Perfil
             </button>
           </div>
 
@@ -665,10 +764,145 @@ export default function Home() {
               </div>
             )}
           </>
-        ) : (
+        ) : activeTab === "leaderboard" ? (
           <Leaderboard currentUserId={user.uid} />
+        ) : (
+          /* Profile Tab */
+          <div className="space-y-6 max-w-xl mx-auto">
+            <div className="glass p-6 rounded-3xl space-y-6 border border-card-border/60">
+              <h2 className="text-xl font-bold text-foreground">Configuración de Perfil</h2>
+              
+              <div className="flex flex-col items-center gap-4 py-4 border-b border-card-border/45">
+                <img
+                  src={user.photoURL || `https://api.dicebear.com/7.x/adventurer/svg?seed=${customDisplayName || user.displayName}`}
+                  alt="Avatar"
+                  className="w-24 h-24 rounded-full border-2 border-gold shadow-lg object-cover bg-background"
+                />
+                <span className="text-xs text-foreground/50 font-medium">Avatar de tu cuenta de Google</span>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-foreground/60 block">
+                  Nombre para mostrar en Leaderboard
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={customDisplayName}
+                    onChange={(e) => setCustomDisplayName(e.target.value)}
+                    className="flex-1 h-11 bg-background border border-card-border rounded-xl px-4 text-sm font-semibold focus:outline-none focus:border-gold transition-all"
+                    placeholder="Tu nombre en el Leaderboard"
+                  />
+                  <button
+                    onClick={handleUpdateName}
+                    disabled={isSavingName || !customDisplayName.trim()}
+                    className={`px-5 rounded-xl text-sm font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 h-11
+                      ${nameSaved
+                        ? "bg-green-500/20 text-green-600 border border-green-500/30"
+                        : "bg-gold text-white hover:bg-yellow-600 disabled:opacity-50"
+                      }`}
+                  >
+                    {nameSaved ? (
+                      <>
+                        <CheckCircle className="w-4 h-4" /> Guardado
+                      </>
+                    ) : isSavingName ? (
+                      "Guardando..."
+                    ) : (
+                      "Guardar"
+                    )}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Danger Zone */}
+            <div className="glass p-6 rounded-3xl border border-red-500/25 bg-red-500/5 space-y-4">
+              <h3 className="text-base font-bold text-red-500 flex items-center gap-2">
+                <AlertCircle className="w-5 h-5" />
+                Zona de Peligro
+              </h3>
+              <p className="text-xs text-foreground/75">
+                Si eliminas tu cuenta, se borrarán todos tus datos de Firestore (predicciones, perfil, puntaje acumulado) y tu cuenta de autenticación de forma permanente.
+              </p>
+              
+              <button
+                onClick={() => setShowDeleteModal(true)}
+                className="bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/30 font-bold py-2.5 px-5 rounded-xl text-xs transition-colors cursor-pointer"
+              >
+                Eliminar mi cuenta
+              </button>
+            </div>
+          </div>
         )}
       </main>
+
+      {/* Delete Account Modal */}
+      <AnimatePresence>
+        {showDeleteModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            {/* Backdrop */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowDeleteModal(false)}
+              className="absolute inset-0 bg-background/80 backdrop-blur-sm"
+            />
+            
+            {/* Modal Box */}
+            <motion.div
+              initial={{ scale: 0.95, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.95, opacity: 0 }}
+              className="glass max-w-md w-full p-6 rounded-3xl border border-red-500/30 bg-card z-10 space-y-6 text-center relative"
+            >
+              <div className="w-12 h-12 bg-red-500/15 text-red-500 rounded-full flex items-center justify-center mx-auto">
+                <AlertCircle className="w-6 h-6" />
+              </div>
+              
+              <div className="space-y-2">
+                <h3 className="text-xl font-bold text-red-500">¿Eliminar cuenta permanentemente?</h3>
+                <p className="text-sm text-foreground/75">
+                  Esta acción es **completamente irreversible**. Se perderán todas tus predicciones guardadas, tu perfil y tus puntos en el leaderboard.
+                </p>
+              </div>
+
+              <div className="flex items-start gap-2.5 text-left p-3 rounded-xl bg-foreground/5 border border-card-border/50">
+                <input
+                  type="checkbox"
+                  id="confirm-delete-checkbox"
+                  checked={confirmDelete}
+                  onChange={(e) => setConfirmDelete(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 accent-red-500 rounded cursor-pointer"
+                />
+                <label htmlFor="confirm-delete-checkbox" className="text-xs text-foreground/80 font-medium select-none cursor-pointer">
+                  Entiendo que esta acción es irreversible y quiero eliminar permanentemente todos mis datos.
+                </label>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowDeleteModal(false);
+                    setConfirmDelete(false);
+                  }}
+                  className="flex-1 bg-foreground/5 hover:bg-foreground/10 border border-card-border/80 font-semibold py-2.5 rounded-xl text-xs transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={handleDeleteAccount}
+                  disabled={!confirmDelete || isDeleting}
+                  className="flex-1 bg-red-500 hover:bg-red-600 disabled:opacity-40 text-white font-bold py-2.5 rounded-xl text-xs transition-colors cursor-pointer"
+                >
+                  {isDeleting ? "Eliminando..." : "Eliminar de forma permanente"}
+                </button>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

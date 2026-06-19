@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { User, onAuthStateChanged, signInWithPopup, signOut } from "firebase/auth";
+import { User, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut } from "firebase/auth";
 import { auth, googleProvider } from "@/lib/firebase";
 import { initializeUserProfile } from "@/lib/db";
 
@@ -51,8 +51,17 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       setError(null);
       await signInWithPopup(auth, googleProvider);
     } catch (err: any) {
-      console.error("Error signing in with Google", err);
-      setError(`Error de autenticación: ${err?.message || err?.toString()}`);
+      console.error("Error signing in with Google, trying redirect fallback...", err);
+      if (err?.code === "auth/popup-blocked" || err?.code === "auth/popup-closed-by-user") {
+        try {
+          await signInWithRedirect(auth, googleProvider);
+        } catch (redirectErr: any) {
+          console.error("Error signing in with Google redirect", redirectErr);
+          setError(`Error de autenticación (Redirección): ${redirectErr?.message || redirectErr?.toString()}`);
+        }
+      } else {
+        setError(`Error de autenticación: ${err?.message || err?.toString()}`);
+      }
     }
   };
 
