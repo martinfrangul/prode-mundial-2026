@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useState } from "react";
-import { User, onAuthStateChanged, signInWithPopup, signInWithRedirect, signOut } from "firebase/auth";
+import { User, onAuthStateChanged, signInWithPopup, signInWithRedirect, getRedirectResult, signOut } from "firebase/auth";
 import { auth, googleProvider } from "@/lib/firebase";
 import { initializeUserProfile } from "@/lib/db";
 
@@ -25,6 +25,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Check redirect results on mount
+  useEffect(() => {
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result?.user) {
+          console.log("Sesión iniciada vía redirección con éxito.");
+        }
+      })
+      .catch((err: any) => {
+        console.error("Error en redirección de Firebase Auth:", err);
+        // Handle common redirect errors
+        if (err?.code === "auth/popup-blocked" || err?.code === "auth/popup-closed-by-user") {
+          return;
+        }
+        if (err?.message?.includes("third-party") || err?.code === "auth/network-request-failed" || err?.message?.includes("storage")) {
+          setError("Tu navegador (ej: Brave Shields o Safari) ha bloqueado el acceso al almacenamiento local o cookies de terceros necesarias para la redirección. Desactiva Brave Shields o permite cookies de terceros para iniciar sesión.");
+        } else {
+          setError(`Error de autenticación por redirección: ${err?.message || err?.toString()}`);
+        }
+      });
+  }, []);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
