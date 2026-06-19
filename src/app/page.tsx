@@ -20,7 +20,7 @@ import MatchCard from "@/components/predictions/MatchCard";
 import Leaderboard from "@/components/leaderboard/Leaderboard";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
-import { collection, doc, getDocs, getDoc, writeBatch, query, orderBy } from "firebase/firestore";
+import { collection, doc, getDocs, getDoc, writeBatch, query, orderBy, onSnapshot, where } from "firebase/firestore";
 
 export default function Home() {
   const { user, loading, error, signInWithGoogle, logout } = useAuth();
@@ -54,37 +54,59 @@ export default function Home() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const fetchData = async () => {
+  useEffect(() => {
     if (!user) return;
+    
     setIsLoadingData(true);
     setFetchError(null);
-    try {
-      const fetchedMatches = await getMatches(); // Fetches sorted by kickoffTime
-      const fetchedPredictions = await getUserPredictions(user.uid);
+
+    let isFirstMatchesLoad = true;
+
+    // Matches real-time listener
+    const matchesRef = collection(db, "matches");
+    const qMatches = query(matchesRef, orderBy("kickoffTime", "asc"));
+    const unsubscribeMatches = onSnapshot(qMatches, (snapshot) => {
+      const fetchedMatches = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Match));
       setMatches(fetchedMatches);
-      setPredictions(fetchedPredictions);
-
-      // Load name from user profile
-      const userRef = doc(db, "users", user.uid);
-      const userSnap = await getDoc(userRef);
-      if (userSnap.exists()) {
-        const data = userSnap.data();
-        if (data.displayName) {
-          setCustomDisplayName(data.displayName);
-        }
+      
+      if (isFirstMatchesLoad) {
+        setIsLoadingData(false);
+        isFirstMatchesLoad = false;
       }
-    } catch (err: any) {
-      console.error("Error fetching data", err);
-      setFetchError(`Error de Firestore: ${err?.message || err?.toString()}`);
-    } finally {
+    }, (err) => {
+      console.error("Error in matches snapshot", err);
+      setFetchError(`Error de Firestore: ${err.message}`);
       setIsLoadingData(false);
-    }
-  };
+    });
 
-  useEffect(() => {
-    if (user) {
-      fetchData();
-    }
+    // Predictions real-time listener
+    const predictionsRef = collection(db, "predictions");
+    const qPredictions = query(predictionsRef, where("userId", "==", user.uid));
+    const unsubscribePredictions = onSnapshot(qPredictions, (snapshot) => {
+      const fetchedPredictions = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      } as Prediction));
+      setPredictions(fetchedPredictions);
+    });
+
+    // Profile listener (for display name updates)
+    const userRef = doc(db, "users", user.uid);
+    const unsubscribeUser = onSnapshot(userRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        if (data.displayName) setCustomDisplayName(data.displayName);
+      }
+    });
+
+    return () => {
+      unsubscribeMatches();
+      unsubscribePredictions();
+      unsubscribeUser();
+    };
   }, [user]);
 
   // Load filters from localStorage after component mounts
