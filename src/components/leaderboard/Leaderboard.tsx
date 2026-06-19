@@ -126,43 +126,45 @@ export default function Leaderboard({ currentUserId }: LeaderboardProps) {
                         : ""
                     }`}
                   >
-                    <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2 sm:gap-4 min-w-0">
                       {/* Rank badge */}
-                      <div className="flex justify-center w-8">
+                      <div className="flex justify-center w-6 sm:w-8 flex-shrink-0">
                         {getRankBadge(rank)}
                       </div>
 
                       {/* Avatar */}
-                      <div className="relative">
+                      <div className="relative flex-shrink-0">
                         <img
                           src={profile.photoURL || `https://api.dicebear.com/7.x/adventurer/svg?seed=${profile.displayName}`}
                           alt={profile.displayName}
-                          className="w-10 h-10 rounded-full border border-card-border object-cover bg-background"
+                          className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border border-card-border object-cover bg-background"
                         />
                         {isCurrentUser && (
-                          <span className="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-background rounded-full" />
+                          <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-background rounded-full" />
                         )}
                       </div>
 
                       {/* Name */}
-                      <div>
-                        <span className={`font-semibold text-sm ${isCurrentUser ? "text-gold font-bold" : "text-foreground"}`}>
-                          {profile.displayName}
-                        </span>
-                        {isCurrentUser && (
-                          <span className="ml-2 text-[10px] bg-gold/20 text-gold border border-gold/30 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
-                            Tú
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                          <span className={`font-semibold text-xs sm:text-sm truncate block max-w-[110px] sm:max-w-[200px] ${isCurrentUser ? "text-gold font-bold" : "text-foreground"}`}>
+                            {profile.displayName}
                           </span>
-                        )}
+                          {isCurrentUser && (
+                            <span className="text-[9px] bg-gold/20 text-gold border border-gold/30 px-1.5 py-0.25 rounded-full font-bold uppercase tracking-wider">
+                              Tú
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
 
                     {/* Score */}
-                    <div className="text-right">
-                      <span className="text-lg font-bold text-foreground">
+                    <div className="text-right flex-shrink-0">
+                      <span className="text-base sm:text-lg font-bold text-foreground">
                         {profile.totalScore}
                       </span>
-                      <span className="text-[10px] text-foreground/50 block font-medium uppercase tracking-wider">
+                      <span className="text-[9px] sm:text-[10px] text-foreground/50 block font-medium uppercase tracking-wider">
                         Puntos
                       </span>
                     </div>

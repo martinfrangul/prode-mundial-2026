@@ -93,14 +93,14 @@ export default function SeedPage() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
-        className="glass p-8 rounded-3xl max-w-lg w-full text-center relative z-10"
+        className="glass p-5 sm:p-8 rounded-3xl max-w-lg w-full text-center relative z-10"
       >
-        <div className="w-16 h-16 bg-gradient-to-br from-gold to-yellow-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-gold/10">
-          <Trophy className="w-8 h-8 text-white" />
+        <div className="w-14 h-14 sm:w-16 sm:h-16 bg-gradient-to-br from-gold to-yellow-600 rounded-2xl flex items-center justify-center mx-auto mb-4 sm:mb-6 shadow-lg shadow-gold/10">
+          <Trophy className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
         </div>
 
-        <h1 className="text-3xl font-extrabold mb-2 tracking-tight">Carga de Partidos</h1>
-        <p className="text-foreground/75 text-sm mb-8">
+        <h1 className="text-2xl sm:text-3xl font-extrabold mb-2 tracking-tight">Carga de Partidos</h1>
+        <p className="text-foreground/75 text-xs sm:text-sm mb-6 sm:mb-8">
           Configura y sincroniza los partidos de la Copa del Mundo en tu base de datos de Firestore.
         </p>
 
