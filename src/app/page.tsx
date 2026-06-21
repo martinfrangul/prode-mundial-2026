@@ -434,6 +434,10 @@ export default function Home() {
     return true;
   });
 
+  if (statusFilter === "finished") {
+    filteredMatches.sort((a, b) => b.kickoffTime.localeCompare(a.kickoffTime));
+  }
+
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
