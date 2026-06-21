@@ -25,9 +25,17 @@ export interface Prediction {
   pointsEarned: number | null;
 }
 
+export interface SpecialPrediction {
+  userId: string;
+  finalists: string[]; // Array of 4 team codes
+  winner: string; // Team code
+  pointsEarned: number | null;
+}
+
 export interface UserProfile {
   uid: string;
   displayName: string;
   photoURL: string;
   totalScore: number;
+  hasSeenSpecialModal?: boolean;
 }

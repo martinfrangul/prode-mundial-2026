@@ -10,7 +10,7 @@ import {
   orderBy,
   writeBatch
 } from "firebase/firestore";
-import { Match, Prediction, UserProfile } from "@/types";
+import { Match, Prediction, UserProfile, SpecialPrediction } from "@/types";
 
 // User Functions
 export async function initializeUserProfile(user: any) {
@@ -97,5 +97,40 @@ export async function deleteUserAccountData(userId: string) {
     batch.delete(doc.ref);
   });
   
+  // 3. Delete special predictions
+  const specialRef = doc(db, "special_predictions", userId);
+  batch.delete(specialRef);
+  
   await batch.commit();
+}
+
+// Special Predictions Functions
+export async function getSpecialPrediction(userId: string): Promise<SpecialPrediction | null> {
+  const specialRef = doc(db, "special_predictions", userId);
+  const snap = await getDoc(specialRef);
+  if (snap.exists()) {
+    return snap.data() as SpecialPrediction;
+  }
+  return null;
+}
+
+export async function getAllSpecialPredictions(): Promise<SpecialPrediction[]> {
+  const specialRef = collection(db, "special_predictions");
+  const snap = await getDocs(specialRef);
+  return snap.docs.map(doc => doc.data() as SpecialPrediction);
+}
+
+export async function saveSpecialPrediction(userId: string, finalists: string[], winner: string) {
+  const specialRef = doc(db, "special_predictions", userId);
+  await setDoc(specialRef, {
+    userId,
+    finalists,
+    winner,
+    pointsEarned: null
+  }, { merge: true });
+}
+
+export async function markSpecialModalSeen(userId: string) {
+  const userRef = doc(db, "users", userId);
+  await setDoc(userRef, { hasSeenSpecialModal: true }, { merge: true });
 }

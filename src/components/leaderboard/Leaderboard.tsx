@@ -1,17 +1,22 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { UserProfile } from "@/types";
-import { getUserLeaderboard } from "@/lib/db";
+import { Match, SpecialPrediction, UserProfile } from "@/types";
+import { getUserLeaderboard, getAllSpecialPredictions } from "@/lib/db";
 import { motion, AnimatePresence } from "framer-motion";
-import { Trophy, Award, Users, RefreshCw } from "lucide-react";
+import { Trophy, Award, Users, RefreshCw, ChevronDown, ChevronUp, Lock, Star, Target } from "lucide-react";
 
 interface LeaderboardProps {
   currentUserId?: string;
+  matches?: Match[];
 }
 
-export default function Leaderboard({ currentUserId }: LeaderboardProps) {
+const DEADLINE = new Date("2026-06-23T21:59:00Z");
+
+export default function Leaderboard({ currentUserId, matches = [] }: LeaderboardProps) {
   const [leaderboard, setLeaderboard] = useState<UserProfile[]>([]);
+  const [specialPredictions, setSpecialPredictions] = useState<Record<string, SpecialPrediction>>({});
+  const [expandedUsers, setExpandedUsers] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -19,8 +24,15 @@ export default function Leaderboard({ currentUserId }: LeaderboardProps) {
     setIsLoading(true);
     setError(null);
     try {
-      const data = await getUserLeaderboard();
+      const [data, specialData] = await Promise.all([
+        getUserLeaderboard(),
+        getAllSpecialPredictions()
+      ]);
       setLeaderboard(data);
+      
+      const specialMap: Record<string, SpecialPrediction> = {};
+      specialData.forEach(sp => { specialMap[sp.userId] = sp; });
+      setSpecialPredictions(specialMap);
     } catch (err: any) {
       console.error("Error fetching leaderboard:", err);
       setError("No se pudo cargar la tabla de clasificación. Asegúrate de configurar Firestore.");
@@ -61,6 +73,26 @@ export default function Leaderboard({ currentUserId }: LeaderboardProps) {
         );
     }
   };
+
+  const toggleExpand = (uid: string) => {
+    setExpandedUsers(prev => {
+      const next = new Set(prev);
+      if (next.has(uid)) next.delete(uid);
+      else next.add(uid);
+      return next;
+    });
+  };
+
+  const getTeamName = (code: string) => {
+    for (const m of matches) {
+      if (m.teamA.code === code) return m.teamA.name;
+      if (m.teamB.code === code) return m.teamB.name;
+    }
+    return code;
+  };
+
+  const now = new Date();
+  const isLocked = now <= DEADLINE;
 
   return (
     <div className="space-y-6">
@@ -120,54 +152,114 @@ export default function Leaderboard({ currentUserId }: LeaderboardProps) {
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -10 }}
                     transition={{ type: "spring", stiffness: 200, damping: 25 }}
-                    className={`flex items-center justify-between p-4 transition-all duration-300 ${
+                    className={`flex flex-col p-4 transition-all duration-300 ${
                       isCurrentUser 
                         ? "bg-gold/10 border border-gold/30 rounded-2xl my-1 relative shadow-sm shadow-gold/5" 
                         : ""
                     }`}
                   >
-                    <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-                      {/* Rank badge */}
-                      <div className="flex justify-center w-6 sm:w-8 flex-shrink-0">
-                        {getRankBadge(rank)}
-                      </div>
+                    <div className="flex items-center justify-between w-full">
+                      <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+                        {/* Rank badge */}
+                        <div className="flex justify-center w-6 sm:w-8 flex-shrink-0">
+                          {getRankBadge(rank)}
+                        </div>
 
-                      {/* Avatar */}
-                      <div className="relative flex-shrink-0">
-                        <img
-                          src={profile.photoURL || `https://api.dicebear.com/7.x/adventurer/svg?seed=${profile.displayName}`}
-                          alt={profile.displayName}
-                          className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border border-card-border object-cover bg-background"
-                        />
-                        {isCurrentUser && (
-                          <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-background rounded-full" />
-                        )}
-                      </div>
-
-                      {/* Name */}
-                      <div className="min-w-0">
-                        <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
-                          <span className={`font-semibold text-xs sm:text-sm truncate block max-w-[110px] sm:max-w-[200px] ${isCurrentUser ? "text-gold font-bold" : "text-foreground"}`}>
-                            {profile.displayName}
-                          </span>
+                        {/* Avatar */}
+                        <div className="relative flex-shrink-0">
+                          <img
+                            src={profile.photoURL || `https://api.dicebear.com/7.x/adventurer/svg?seed=${profile.displayName}`}
+                            alt={profile.displayName}
+                            className="w-8 h-8 sm:w-10 sm:h-10 rounded-full border border-card-border object-cover bg-background"
+                          />
                           {isCurrentUser && (
-                            <span className="text-[9px] bg-gold/20 text-gold border border-gold/30 px-1.5 py-0.25 rounded-full font-bold uppercase tracking-wider">
-                              Tú
-                            </span>
+                            <span className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 border-2 border-background rounded-full" />
                           )}
                         </div>
+
+                        {/* Name */}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
+                            <span className={`font-semibold text-xs sm:text-sm truncate block max-w-[110px] sm:max-w-[200px] ${isCurrentUser ? "text-gold font-bold" : "text-foreground"}`}>
+                              {profile.displayName}
+                            </span>
+                            {isCurrentUser && (
+                              <span className="text-[9px] bg-gold/20 text-gold border border-gold/30 px-1.5 py-0.25 rounded-full font-bold uppercase tracking-wider">
+                                Tú
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Score */}
+                      <div className="text-right flex-shrink-0 flex items-center">
+                        <span className="text-base sm:text-lg font-bold text-foreground">
+                          {profile.totalScore}
+                        </span>
+                        {/* Expand Button */}
+                        <button 
+                          onClick={() => toggleExpand(profile.uid)}
+                          className="ml-2 sm:ml-4 p-1.5 rounded-full hover:bg-foreground/5 text-foreground/50 transition-colors"
+                        >
+                          {expandedUsers.has(profile.uid) ? (
+                            <ChevronUp className="w-4 h-4 sm:w-5 sm:h-5" />
+                          ) : (
+                            <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5" />
+                          )}
+                        </button>
                       </div>
                     </div>
 
-                    {/* Score */}
-                    <div className="text-right flex-shrink-0">
-                      <span className="text-base sm:text-lg font-bold text-foreground">
-                        {profile.totalScore}
-                      </span>
-                      <span className="text-[9px] sm:text-[10px] text-foreground/50 block font-medium uppercase tracking-wider">
-                        Puntos
-                      </span>
-                    </div>
+                    {/* Expandable Special Predictions */}
+                    <AnimatePresence>
+                      {expandedUsers.has(profile.uid) && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: "auto", opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="overflow-hidden border-t border-card-border/30 mt-4 pt-4 w-full"
+                        >
+                          <h4 className="text-xs font-bold text-foreground/70 uppercase tracking-wider mb-3">Apuestas Especiales</h4>
+                          
+                          {isLocked && !isCurrentUser ? (
+                            <div className="flex items-center gap-2 text-foreground/50 text-xs sm:text-sm bg-background p-3 rounded-xl border border-card-border/50">
+                              <Lock className="w-4 h-4 text-amber-500/70" />
+                              <span>Ocultas hasta el 23 de Junio</span>
+                            </div>
+                          ) : !specialPredictions[profile.uid] ? (
+                            <div className="text-foreground/50 text-xs sm:text-sm bg-background p-3 rounded-xl border border-card-border/50">
+                              No apostado
+                            </div>
+                          ) : (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                              <div className="bg-background p-3 rounded-xl border border-card-border/50">
+                                <div className="flex items-center gap-1.5 mb-1.5 text-blue-500/80">
+                                  <Target className="w-3.5 h-3.5" />
+                                  <span className="text-[10px] uppercase font-bold">Semifinalistas</span>
+                                </div>
+                                <div className="flex flex-wrap gap-1">
+                                  {specialPredictions[profile.uid].finalists.filter(f => f).map((code, i) => (
+                                    <span key={i} className="text-xs font-semibold bg-foreground/5 px-2 py-0.5 rounded-md">
+                                      {getTeamName(code)}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                              <div className="bg-background p-3 rounded-xl border border-card-border/50">
+                                <div className="flex items-center gap-1.5 mb-1.5 text-gold/80">
+                                  <Trophy className="w-3.5 h-3.5" />
+                                  <span className="text-[10px] uppercase font-bold">Campeón</span>
+                                </div>
+                                <div className="text-xs font-semibold">
+                                  {getTeamName(specialPredictions[profile.uid].winner)}
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
                   </motion.div>
                 );
               })}

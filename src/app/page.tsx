@@ -2,25 +2,42 @@
 
 import { useAuth } from "@/contexts/AuthContext";
 import { motion, AnimatePresence } from "framer-motion";
-import { 
-  Trophy, 
-  LogIn, 
-  RefreshCw, 
-  SlidersHorizontal, 
-  CheckCircle, 
-  AlertCircle, 
-  Calendar, 
+import {
+  Trophy,
+  LogIn,
+  RefreshCw,
+  SlidersHorizontal,
+  CheckCircle,
+  AlertCircle,
+  Calendar,
   X,
-  Database
+  Database,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { Match, Prediction, UserProfile } from "@/types";
-import { getMatches, getUserPredictions, updateUserDisplayName, deleteUserAccountData } from "@/lib/db";
+import { Match, Prediction, UserProfile, SpecialPrediction } from "@/types";
+import {
+  getMatches,
+  getUserPredictions,
+  updateUserDisplayName,
+  deleteUserAccountData,
+} from "@/lib/db";
 import MatchCard from "@/components/predictions/MatchCard";
 import Leaderboard from "@/components/leaderboard/Leaderboard";
+import SpecialPredictionsTab from "@/components/predictions/SpecialPredictionsTab";
+import SpecialBetsModal from "@/components/onboarding/SpecialBetsModal";
 import Link from "next/link";
 import { db } from "@/lib/firebase";
-import { collection, doc, getDocs, getDoc, writeBatch, query, orderBy, onSnapshot, where } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  getDocs,
+  getDoc,
+  writeBatch,
+  query,
+  orderBy,
+  onSnapshot,
+  where,
+} from "firebase/firestore";
 
 export default function Home() {
   const { user, loading, error, signInWithGoogle, logout } = useAuth();
@@ -28,7 +45,9 @@ export default function Home() {
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [isLoadingData, setIsLoadingData] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<"predictions" | "leaderboard" | "profile">("predictions");
+  const [activeTab, setActiveTab] = useState<
+    "predictions" | "special" | "leaderboard" | "profile"
+  >("predictions");
 
   // Syncing states
   const [isSyncing, setIsSyncing] = useState(false);
@@ -40,12 +59,19 @@ export default function Home() {
   const [syncError, setSyncError] = useState<string | null>(null);
 
   // Filter states (initialized from local storage if possible)
-  const [stageFilter, setStageFilter] = useState<"all" | "group" | "playoff">("all");
+  const [stageFilter, setStageFilter] = useState<"all" | "group" | "playoff">(
+    "all",
+  );
   const [groupFilter, setGroupFilter] = useState<string>("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "finished">("all");
+  const [statusFilter, setStatusFilter] = useState<
+    "all" | "pending" | "finished"
+  >("all");
 
   // Profile states
-  const [customDisplayName, setCustomDisplayName] = useState(user?.displayName || "");
+  const [customDisplayName, setCustomDisplayName] = useState(
+    user?.displayName || "",
+  );
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [isSavingName, setIsSavingName] = useState(false);
   const [nameSaved, setNameSaved] = useState(false);
 
@@ -56,7 +82,7 @@ export default function Home() {
 
   useEffect(() => {
     if (!user) return;
-    
+
     setIsLoadingData(true);
     setFetchError(null);
 
@@ -65,31 +91,41 @@ export default function Home() {
     // Matches real-time listener
     const matchesRef = collection(db, "matches");
     const qMatches = query(matchesRef, orderBy("kickoffTime", "asc"));
-    const unsubscribeMatches = onSnapshot(qMatches, (snapshot) => {
-      const fetchedMatches = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Match));
-      setMatches(fetchedMatches);
-      
-      if (isFirstMatchesLoad) {
+    const unsubscribeMatches = onSnapshot(
+      qMatches,
+      (snapshot) => {
+        const fetchedMatches = snapshot.docs.map(
+          (doc) =>
+            ({
+              id: doc.id,
+              ...doc.data(),
+            }) as Match,
+        );
+        setMatches(fetchedMatches);
+
+        if (isFirstMatchesLoad) {
+          setIsLoadingData(false);
+          isFirstMatchesLoad = false;
+        }
+      },
+      (err) => {
+        console.error("Error in matches snapshot", err);
+        setFetchError(`Error de Firestore: ${err.message}`);
         setIsLoadingData(false);
-        isFirstMatchesLoad = false;
-      }
-    }, (err) => {
-      console.error("Error in matches snapshot", err);
-      setFetchError(`Error de Firestore: ${err.message}`);
-      setIsLoadingData(false);
-    });
+      },
+    );
 
     // Predictions real-time listener
     const predictionsRef = collection(db, "predictions");
     const qPredictions = query(predictionsRef, where("userId", "==", user.uid));
     const unsubscribePredictions = onSnapshot(qPredictions, (snapshot) => {
-      const fetchedPredictions = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      } as Prediction));
+      const fetchedPredictions = snapshot.docs.map(
+        (doc) =>
+          ({
+            id: doc.id,
+            ...doc.data(),
+          }) as Prediction,
+      );
       setPredictions(fetchedPredictions);
     });
 
@@ -97,7 +133,8 @@ export default function Home() {
     const userRef = doc(db, "users", user.uid);
     const unsubscribeUser = onSnapshot(userRef, (docSnap) => {
       if (docSnap.exists()) {
-        const data = docSnap.data();
+        const data = docSnap.data() as UserProfile;
+        setUserProfile(data);
         if (data.displayName) setCustomDisplayName(data.displayName);
       }
     });
@@ -115,7 +152,7 @@ export default function Home() {
       const savedStage = localStorage.getItem("prode_stage_filter") as any;
       const savedGroup = localStorage.getItem("prode_group_filter");
       const savedStatus = localStorage.getItem("prode_status_filter") as any;
-      
+
       if (savedStage) setStageFilter(savedStage);
       if (savedGroup) setGroupFilter(savedGroup);
       if (savedStatus) setStatusFilter(savedStatus);
@@ -144,7 +181,9 @@ export default function Home() {
 
   const handlePredictionSaved = (updatedPrediction: Prediction) => {
     setPredictions((prev) => {
-      const idx = prev.findIndex((p) => p.matchId === updatedPrediction.matchId);
+      const idx = prev.findIndex(
+        (p) => p.matchId === updatedPrediction.matchId,
+      );
       if (idx > -1) {
         const next = [...prev];
         next[idx] = updatedPrediction;
@@ -163,7 +202,7 @@ export default function Home() {
     predA: number | null,
     predB: number | null,
     actA: number,
-    actB: number
+    actB: number,
   ): number => {
     if (predA === null || predB === null) return 0;
 
@@ -188,9 +227,11 @@ export default function Home() {
       // 1. Fetch live matches from proxy API
       const response = await fetch("/api/cron/update-results");
       const data = await response.json();
-      
+
       if (!response.ok || !data.success) {
-        throw new Error(data.error || "Ocurrió un error al consultar resultados con la API.");
+        throw new Error(
+          data.error || "Ocurrió un error al consultar resultados con la API.",
+        );
       }
 
       const apiMatches = data.apiMatches || [];
@@ -199,15 +240,27 @@ export default function Home() {
       const matchesRef = collection(db, "matches");
       const qMatches = query(matchesRef, orderBy("kickoffTime", "asc"));
       const matchesSnap = await getDocs(qMatches);
-      const currentMatches = matchesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Match));
+      const currentMatches = matchesSnap.docs.map(
+        (doc) => ({ id: doc.id, ...doc.data() }) as Match,
+      );
 
       const predictionsRef = collection(db, "predictions");
       const predictionsSnap = await getDocs(predictionsRef);
-      const currentPredictions = predictionsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Prediction));
+      const currentPredictions = predictionsSnap.docs.map(
+        (doc) => ({ id: doc.id, ...doc.data() }) as Prediction,
+      );
+
+      const specialPredictionsRef = collection(db, "special_predictions");
+      const specialPredictionsSnap = await getDocs(specialPredictionsRef);
+      const currentSpecialPredictions = specialPredictionsSnap.docs.map(
+        (doc) => doc.data() as SpecialPrediction,
+      );
 
       const usersRef = collection(db, "users");
       const usersSnap = await getDocs(usersRef);
-      const currentUsers = usersSnap.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
+      const currentUsers = usersSnap.docs.map(
+        (doc) => ({ uid: doc.id, ...doc.data() }) as UserProfile,
+      );
 
       // 3. Process changes and compile Firestore batch updates
       const batch = writeBatch(db);
@@ -216,7 +269,7 @@ export default function Home() {
       let usersUpdated = 0;
 
       const userScores: Record<string, number> = {};
-      currentUsers.forEach(u => {
+      currentUsers.forEach((u) => {
         userScores[u.uid] = 0;
       });
 
@@ -231,26 +284,40 @@ export default function Home() {
         if (apiMatches.length > 0) {
           // Find match in external API results by ID first, then fallback to country codes
           let apiMatch = apiMatches.find((m: any) => String(m.id) === match.id);
-          
+
           if (!apiMatch) {
-            apiMatch = apiMatches.find((m: any) => 
-              (m.homeTeam.tla === match.teamA.code && m.awayTeam.tla === match.teamB.code) ||
-              (m.homeTeam.tla === match.teamB.code && m.awayTeam.tla === match.teamA.code)
+            apiMatch = apiMatches.find(
+              (m: any) =>
+                (m.homeTeam.tla === match.teamA.code &&
+                  m.awayTeam.tla === match.teamB.code) ||
+                (m.homeTeam.tla === match.teamB.code &&
+                  m.awayTeam.tla === match.teamA.code),
             );
           }
 
           if (apiMatch) {
-            const isHomeTeamA = apiMatch.homeTeam.tla === match.teamA.code || apiMatch.homeTeam.name === match.teamA.name;
+            const isHomeTeamA =
+              apiMatch.homeTeam.tla === match.teamA.code ||
+              apiMatch.homeTeam.name === match.teamA.name;
             const apiStatus = apiMatch.status;
-            
+
             let newStatus: typeof match.status = "scheduled";
             if (apiStatus === "FINISHED") newStatus = "finished";
-            else if (["IN_PLAY", "LIVE", "PAUSED"].includes(apiStatus)) newStatus = "in_play";
+            else if (["IN_PLAY", "LIVE", "PAUSED"].includes(apiStatus))
+              newStatus = "in_play";
 
-            const newScoreA = isHomeTeamA ? apiMatch.score.fullTime.home : apiMatch.score.fullTime.away;
-            const newScoreB = isHomeTeamA ? apiMatch.score.fullTime.away : apiMatch.score.fullTime.home;
+            const newScoreA = isHomeTeamA
+              ? apiMatch.score.fullTime.home
+              : apiMatch.score.fullTime.away;
+            const newScoreB = isHomeTeamA
+              ? apiMatch.score.fullTime.away
+              : apiMatch.score.fullTime.home;
 
-            if (status !== newStatus || actualScoreA !== newScoreA || actualScoreB !== newScoreB) {
+            if (
+              status !== newStatus ||
+              actualScoreA !== newScoreA ||
+              actualScoreB !== newScoreB
+            ) {
               status = newStatus;
               actualScoreA = newScoreA;
               actualScoreB = newScoreB;
@@ -273,7 +340,7 @@ export default function Home() {
           batch.update(matchRefDoc, {
             status,
             actualScoreA,
-            actualScoreB
+            actualScoreB,
           });
           matchesUpdated++;
         }
@@ -282,13 +349,13 @@ export default function Home() {
           ...match,
           status,
           actualScoreA,
-          actualScoreB
+          actualScoreB,
         };
       });
 
       // Create quick lookup map
       const matchesMap = new Map<string, Match>();
-      updatedMatches.forEach(m => matchesMap.set(m.id, m));
+      updatedMatches.forEach((m) => matchesMap.set(m.id, m));
 
       // Calculate predictions
       currentPredictions.forEach((pred) => {
@@ -297,12 +364,16 @@ export default function Home() {
 
         let pointsEarned: number | null = null;
 
-        if (match.status === "finished" && match.actualScoreA !== null && match.actualScoreB !== null) {
+        if (
+          match.status === "finished" &&
+          match.actualScoreA !== null &&
+          match.actualScoreB !== null
+        ) {
           pointsEarned = calculatePoints(
             pred.predictedScoreA,
             pred.predictedScoreB,
             match.actualScoreA,
-            match.actualScoreB
+            match.actualScoreB,
           );
         }
 
@@ -314,6 +385,16 @@ export default function Home() {
 
         if (pointsEarned !== null && userScores[pred.userId] !== undefined) {
           userScores[pred.userId] += pointsEarned;
+        }
+      });
+
+      // Add special predictions points
+      currentSpecialPredictions.forEach((specialPred) => {
+        if (
+          specialPred.pointsEarned !== null &&
+          userScores[specialPred.userId] !== undefined
+        ) {
+          userScores[specialPred.userId] += specialPred.pointsEarned;
         }
       });
 
@@ -335,14 +416,13 @@ export default function Home() {
       setSyncSummary({
         matchesUpdated,
         predictionsUpdated,
-        usersUpdated
+        usersUpdated,
       });
 
       // Refresh state, keeping them ordered by kickoffTime
       setMatches(updatedMatches);
       const fetchedPredictions = await getUserPredictions(user.uid);
       setPredictions(fetchedPredictions);
-
     } catch (err: any) {
       console.error("Error executing client-side sync:", err);
       setSyncError(err.message || "Error al sincronizar resultados.");
@@ -358,14 +438,16 @@ export default function Home() {
     try {
       // 1. Update Firestore
       await updateUserDisplayName(user.uid, customDisplayName.trim());
-      
+
       // 2. Update Firebase Auth Profile (if currentUser is available)
       const { auth } = await import("@/lib/firebase");
       const { updateProfile } = await import("firebase/auth");
       if (auth.currentUser) {
-        await updateProfile(auth.currentUser, { displayName: customDisplayName.trim() });
+        await updateProfile(auth.currentUser, {
+          displayName: customDisplayName.trim(),
+        });
       }
-      
+
       setNameSaved(true);
       setTimeout(() => setNameSaved(false), 3000);
     } catch (err: any) {
@@ -382,29 +464,34 @@ export default function Home() {
     try {
       // 1. Delete Firestore data (profile + predictions)
       await deleteUserAccountData(user.uid);
-      
+
       // 2. Try to delete from Firebase Auth
       try {
         const { auth } = await import("@/lib/firebase");
         const { deleteUser } = await import("firebase/auth");
-        
+
         if (auth.currentUser) {
           await deleteUser(auth.currentUser);
         }
       } catch (authErr) {
-        console.warn("Auth user deletion failed (requires recent login), signing out instead", authErr);
+        console.warn(
+          "Auth user deletion failed (requires recent login), signing out instead",
+          authErr,
+        );
         // Fallback: since Firestore data is deleted, signing them out is sufficient to clear their account in-app
         const { auth } = await import("@/lib/firebase");
         const { signOut } = await import("firebase/auth");
         await signOut(auth);
       }
-      
+
       // Unmount delete modal safely
       setShowDeleteModal(false);
       setConfirmDelete(false);
     } catch (err: any) {
       console.error("Error during account deletion process:", err);
-      setSyncError(`Error al eliminar la cuenta: ${err.message || err.toString()}`);
+      setSyncError(
+        `Error al eliminar la cuenta: ${err.message || err.toString()}`,
+      );
       setShowDeleteModal(false);
       setConfirmDelete(false);
     } finally {
@@ -414,7 +501,7 @@ export default function Home() {
 
   // Get unique groups from matches
   const availableGroups = Array.from(
-    new Set(matches.map((m) => m.group).filter(Boolean))
+    new Set(matches.map((m) => m.group).filter(Boolean)),
   ) as string[];
   availableGroups.sort();
 
@@ -422,15 +509,26 @@ export default function Home() {
   const filteredMatches = matches.filter((match) => {
     // Stage Filter
     if (stageFilter !== "all" && match.stage !== stageFilter) return false;
-    
+
     // Group Filter
-    if (stageFilter === "group" && groupFilter !== "all" && match.group !== groupFilter) return false;
-    if (stageFilter === "all" && groupFilter !== "all" && match.group !== groupFilter) return false;
-    
+    if (
+      stageFilter === "group" &&
+      groupFilter !== "all" &&
+      match.group !== groupFilter
+    )
+      return false;
+    if (
+      stageFilter === "all" &&
+      groupFilter !== "all" &&
+      match.group !== groupFilter
+    )
+      return false;
+
     // Status Filter
     if (statusFilter === "pending" && match.status === "finished") return false;
-    if (statusFilter === "finished" && match.status !== "finished") return false;
-    
+    if (statusFilter === "finished" && match.status !== "finished")
+      return false;
+
     return true;
   });
 
@@ -452,8 +550,8 @@ export default function Home() {
         {/* Background decorations */}
         <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-gold/10 blur-[100px] rounded-full" />
         <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-500/10 blur-[100px] rounded-full" />
-        
-        <motion.div 
+
+        <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.8, ease: "easeOut" }}
@@ -467,17 +565,23 @@ export default function Home() {
           >
             <Trophy className="w-8 h-8 sm:w-10 sm:h-10 text-white" />
           </motion.div>
-          
-          <h1 className="text-2xl sm:text-3xl font-bold mb-2 tracking-tight">Prode Mundial</h1>
-          <p className="text-foreground/70 text-sm mb-8">Demuestra que sabes más de fútbol que tus amigos.</p>
+
+          <h1 className="text-2xl sm:text-3xl font-bold mb-2 tracking-tight">
+            Prode Mundial
+          </h1>
+          <p className="text-foreground/70 text-sm mb-8">
+            Demuestra que sabes más de fútbol que tus amigos.
+          </p>
 
           {error && (
             <div className="mb-6 p-4 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm text-left whitespace-pre-wrap break-words">
-              <strong className="block mb-1">Error de configuración o conexión:</strong>
+              <strong className="block mb-1">
+                Error de configuración o conexión:
+              </strong>
               {error}
             </div>
           )}
-          
+
           <button
             onClick={signInWithGoogle}
             className="w-full bg-white text-gray-900 font-semibold py-3 px-4 rounded-xl flex items-center justify-center gap-3 hover:bg-gray-50 transition-colors shadow-sm cursor-pointer text-sm sm:text-base"
@@ -509,10 +613,23 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex flex-col">
+      {user && userProfile && userProfile.hasSeenSpecialModal !== true && (
+        <SpecialBetsModal
+          userId={user.uid}
+          onClose={() => {
+            // Optimistically update local state so it hides immediately
+            setUserProfile((prev) =>
+              prev ? { ...prev, hasSeenSpecialModal: true } : null,
+            );
+          }}
+        />
+      )}
       <header className="glass sticky top-0 z-50 border-x-0 border-t-0 rounded-none px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Trophy className="w-5 h-5 sm:w-6 sm:h-6 text-gold" />
-          <span className="font-bold text-base sm:text-lg tracking-tight">Prode 2026</span>
+          <span className="font-bold text-base sm:text-lg tracking-tight">
+            Prode 2026
+          </span>
         </div>
         <div className="flex items-center gap-2 sm:gap-4">
           <Link
@@ -524,10 +641,20 @@ export default function Home() {
             <span className="hidden sm:inline">Cargar Partidos</span>
           </Link>
           <div className="flex items-center gap-1.5 sm:gap-2">
-            <img src={user.photoURL || ""} alt="Avatar" className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-card-border" />
-            <span className="text-xs sm:text-sm font-medium hidden md:block">{customDisplayName || user.displayName}</span>
+            <img
+              src={user.photoURL || ""}
+              alt="Avatar"
+              className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-card-border"
+            />
+            <span className="text-xs sm:text-sm font-medium hidden md:block">
+              {customDisplayName || user.displayName}
+            </span>
           </div>
-          <button onClick={logout} className="p-1.5 sm:p-2 rounded-full hover:bg-foreground/5 transition-colors cursor-pointer" title="Cerrar Sesión">
+          <button
+            onClick={logout}
+            className="p-1.5 sm:p-2 rounded-full hover:bg-foreground/5 transition-colors cursor-pointer"
+            title="Cerrar Sesión"
+          >
             <LogIn className="w-4 h-4 sm:w-5 sm:h-5 text-foreground/70" />
           </button>
         </div>
@@ -553,13 +680,17 @@ export default function Home() {
               <div className="flex gap-2.5 items-start">
                 <CheckCircle className="w-4 h-4 sm:w-5 h-5 mt-0.5 flex-shrink-0" />
                 <div>
-                  <h4 className="font-bold text-xs sm:text-sm">Sincronización Exitosa</h4>
+                  <h4 className="font-bold text-xs sm:text-sm">
+                    Sincronización Exitosa
+                  </h4>
                   <p className="text-[11px] sm:text-xs text-foreground/80 mt-0.5">
-                    Se han actualizado {syncSummary.matchesUpdated} partidos y {syncSummary.predictionsUpdated} predicciones. Se recalcularon los puntos de los usuarios participantes.
+                    Se han actualizado {syncSummary.matchesUpdated} partidos y{" "}
+                    {syncSummary.predictionsUpdated} predicciones. Se
+                    recalcularon los puntos de los usuarios participantes.
                   </p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => setSyncSummary(null)}
                 className="text-foreground/50 hover:text-foreground/80 transition-colors p-0.5 cursor-pointer"
               >
@@ -578,11 +709,15 @@ export default function Home() {
               <div className="flex gap-2.5 items-start">
                 <AlertCircle className="w-4 h-4 sm:w-5 h-5 mt-0.5 flex-shrink-0" />
                 <div>
-                  <h4 className="font-bold text-xs sm:text-sm">Mensaje del Sistema</h4>
-                  <p className="text-[11px] sm:text-xs opacity-90 mt-0.5">{syncError}</p>
+                  <h4 className="font-bold text-xs sm:text-sm">
+                    Mensaje del Sistema
+                  </h4>
+                  <p className="text-[11px] sm:text-xs opacity-90 mt-0.5">
+                    {syncError}
+                  </p>
                 </div>
               </div>
-              <button 
+              <button
                 onClick={() => setSyncError(null)}
                 className="text-foreground/50 hover:text-foreground/80 transition-colors p-0.5 cursor-pointer"
               >
@@ -594,11 +729,13 @@ export default function Home() {
 
         {/* Tab Selector & Sync controls */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-6 sm:mb-8">
-          <div className="flex bg-card/45 border border-card-border p-0.5 sm:p-1 rounded-2xl max-w-md w-full sm:w-auto relative">
+          <div className="flex bg-card/45 border border-card-border p-0.5 sm:p-1 rounded-2xl max-w-2xl w-full sm:w-auto relative overflow-x-auto scrollbar-hide">
             <button
               onClick={() => setActiveTab("predictions")}
               className={`flex-1 py-2 px-2.5 sm:px-4 rounded-xl text-xs sm:text-sm font-semibold transition-colors duration-300 flex items-center justify-center gap-1 sm:gap-2 relative z-10 cursor-pointer ${
-                activeTab === "predictions" ? "text-white" : "text-foreground/70 hover:text-foreground"
+                activeTab === "predictions"
+                  ? "text-white"
+                  : "text-foreground/70 hover:text-foreground"
               }`}
             >
               {activeTab === "predictions" && (
@@ -609,12 +746,15 @@ export default function Home() {
                 />
               )}
               <Trophy className="w-3.5 h-3.5 flex-shrink-0" />
-              <span>Predicciones</span>
+              <span className="hidden sm:inline">Predicciones</span>
+              <span className="sm:hidden">Partidos</span>
             </button>
             <button
               onClick={() => setActiveTab("leaderboard")}
-              className={`flex-1 py-2 px-2.5 sm:px-4 rounded-xl text-xs sm:text-sm font-semibold transition-colors duration-300 flex items-center justify-center gap-1 sm:gap-2 relative z-10 cursor-pointer ${
-                activeTab === "leaderboard" ? "text-white" : "text-foreground/70 hover:text-foreground"
+              className={`flex-1 py-2 px-1.5 sm:px-4 rounded-xl text-[10px] sm:text-sm font-semibold transition-colors duration-300 flex items-center justify-center gap-1 sm:gap-2 relative z-10 cursor-pointer ${
+                activeTab === "leaderboard"
+                  ? "text-white"
+                  : "text-foreground/70 hover:text-foreground"
               }`}
             >
               {activeTab === "leaderboard" && (
@@ -624,15 +764,58 @@ export default function Home() {
                   transition={{ type: "spring", stiffness: 380, damping: 30 }}
                 />
               )}
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 flex-shrink-0">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z" />
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="w-3.5 h-3.5 flex-shrink-0"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 002 2h2a2 2 0 002-2z"
+                />
               </svg>
-              <span>Clasificación</span>
+              <span className="hidden sm:inline">Clasificación</span>
+              <span className="sm:hidden">Top</span>
+            </button>
+            <button
+              onClick={() => setActiveTab("special")}
+              className={`flex-1 py-2 px-1.5 sm:px-4 rounded-xl text-[10px] sm:text-sm font-semibold transition-colors duration-300 flex items-center justify-center gap-1 sm:gap-2 relative z-10 cursor-pointer ${
+                activeTab === "special"
+                  ? "text-white"
+                  : "text-foreground/70 hover:text-foreground"
+              }`}
+            >
+              {activeTab === "special" && (
+                <motion.div
+                  layoutId="activeTabPill"
+                  className="absolute inset-0 bg-gold rounded-xl -z-10 shadow-md shadow-gold/20"
+                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                />
+              )}
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="w-3.5 h-3.5 flex-shrink-0"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"
+                />
+              </svg>
+              <span>Especiales</span>
             </button>
             <button
               onClick={() => setActiveTab("profile")}
-              className={`flex-1 py-2 px-2.5 sm:px-4 rounded-xl text-xs sm:text-sm font-semibold transition-colors duration-300 flex items-center justify-center gap-1 sm:gap-2 relative z-10 cursor-pointer ${
-                activeTab === "profile" ? "text-white" : "text-foreground/70 hover:text-foreground"
+              className={`flex-1 py-2 px-1.5 sm:px-4 rounded-xl text-[10px] sm:text-sm font-semibold transition-colors duration-300 flex items-center justify-center gap-1 sm:gap-2 relative z-10 cursor-pointer ${
+                activeTab === "profile"
+                  ? "text-white"
+                  : "text-foreground/70 hover:text-foreground"
               }`}
             >
               {activeTab === "profile" && (
@@ -642,10 +825,21 @@ export default function Home() {
                   transition={{ type: "spring", stiffness: 380, damping: 30 }}
                 />
               )}
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="w-3.5 h-3.5 flex-shrink-0">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+              <svg
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="w-3.5 h-3.5 flex-shrink-0"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                />
               </svg>
-              <span>Mi Perfil</span>
+              <span className="hidden sm:inline">Mi Perfil</span>
+              <span className="sm:hidden">Perfil</span>
             </button>
           </div>
 
@@ -655,7 +849,9 @@ export default function Home() {
               disabled={isSyncing}
               className="w-full sm:w-auto bg-gold hover:bg-yellow-600 disabled:bg-foreground/10 text-white font-bold py-2 sm:py-2.5 px-4 sm:px-5 rounded-xl sm:rounded-2xl text-xs sm:text-sm flex items-center justify-center gap-2 transition-all cursor-pointer shadow-md shadow-gold/10"
             >
-              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`} />
+              <RefreshCw
+                className={`w-3.5 h-3.5 ${isSyncing ? "animate-spin" : ""}`}
+              />
               {isSyncing ? "Sincronizando..." : "Sincronizar Resultados"}
             </button>
           )}
@@ -666,21 +862,30 @@ export default function Home() {
             {/* Header controls & Filters */}
             <div className="flex flex-col gap-3 sm:gap-4 mb-5 sm:mb-6">
               <div>
-                <h2 className="text-xl sm:text-2xl font-bold mb-0.5">Tus Predicciones</h2>
-                <p className="text-foreground/60 text-xs sm:text-sm">Pronostica los resultados del fixture oficial.</p>
+                <h2 className="text-xl sm:text-2xl font-bold mb-0.5">
+                  Tus Predicciones
+                </h2>
+                <p className="text-foreground/60 text-xs sm:text-sm">
+                  Pronostica los resultados del fixture oficial.
+                </p>
               </div>
 
               {matches.length > 0 && (
                 <div className="glass p-3 sm:p-4 rounded-2xl sm:rounded-3xl space-y-3 sm:space-y-4 border border-card-border/60">
                   <div className="flex items-center gap-2 text-foreground/80 font-bold text-[10px] sm:text-xs border-b border-card-border/50 pb-2">
                     <SlidersHorizontal className="w-3.5 h-3.5 text-gold flex-shrink-0" />
-                    <span>FILTRAR PARTIDOS ({filteredMatches.length} de {matches.length})</span>
+                    <span>
+                      FILTRAR PARTIDOS ({filteredMatches.length} de{" "}
+                      {matches.length})
+                    </span>
                   </div>
 
                   <div className="grid gap-3 grid-cols-1 sm:grid-cols-3">
                     {/* Stage Filter */}
                     <div className="space-y-1">
-                      <label className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-foreground/50">Fase</label>
+                      <label className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-foreground/50">
+                        Fase
+                      </label>
                       <div className="flex bg-background border border-card-border/80 p-0.5 rounded-xl text-[11px] sm:text-xs">
                         <button
                           onClick={() => changeStageFilter("all")}
@@ -705,7 +910,9 @@ export default function Home() {
 
                     {/* Group Selector */}
                     <div className="space-y-1">
-                      <label className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-foreground/50">Grupo</label>
+                      <label className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-foreground/50">
+                        Grupo
+                      </label>
                       <select
                         value={groupFilter}
                         onChange={(e) => changeGroupFilter(e.target.value)}
@@ -723,7 +930,9 @@ export default function Home() {
 
                     {/* Status Filter */}
                     <div className="space-y-1">
-                      <label className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-foreground/50">Estado</label>
+                      <label className="text-[9px] sm:text-[10px] uppercase font-bold tracking-wider text-foreground/50">
+                        Estado
+                      </label>
                       <div className="flex bg-background border border-card-border/80 p-0.5 rounded-xl text-[11px] sm:text-xs">
                         <button
                           onClick={() => changeStatusFilter("all")}
@@ -749,24 +958,28 @@ export default function Home() {
                 </div>
               )}
             </div>
-            
+
             {isLoadingData ? (
               <div className="flex justify-center py-12">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gold"></div>
               </div>
             ) : matches.length === 0 ? (
-               <div className="glass p-8 sm:p-12 text-center text-foreground/60 rounded-3xl border border-card-border/60">
-                 <Calendar className="w-10 h-10 sm:w-12 sm:h-12 text-gold/40 mx-auto mb-4" />
-                 <p className="font-semibold text-sm sm:text-base">No hay partidos cargados en la base de datos.</p>
-                 <p className="text-[11px] sm:text-xs text-foreground/50 mt-1 mb-6">Inicializa los partidos del Mundial para empezar a jugar.</p>
-                 <Link
-                   href="/seed"
-                   className="inline-flex bg-gold hover:bg-yellow-600 text-white font-bold py-2 sm:py-2.5 px-5 sm:px-6 rounded-xl sm:rounded-2xl text-xs transition-colors items-center gap-2"
-                 >
-                   <Database className="w-3.5 h-3.5" />
-                   Cargar fixture desde API o Local
-                 </Link>
-               </div>
+              <div className="glass p-8 sm:p-12 text-center text-foreground/60 rounded-3xl border border-card-border/60">
+                <Calendar className="w-10 h-10 sm:w-12 sm:h-12 text-gold/40 mx-auto mb-4" />
+                <p className="font-semibold text-sm sm:text-base">
+                  No hay partidos cargados en la base de datos.
+                </p>
+                <p className="text-[11px] sm:text-xs text-foreground/50 mt-1 mb-6">
+                  Inicializa los partidos del Mundial para empezar a jugar.
+                </p>
+                <Link
+                  href="/seed"
+                  className="inline-flex bg-gold hover:bg-yellow-600 text-white font-bold py-2 sm:py-2.5 px-5 sm:px-6 rounded-xl sm:rounded-2xl text-xs transition-colors items-center gap-2"
+                >
+                  <Database className="w-3.5 h-3.5" />
+                  Cargar fixture desde API o Local
+                </Link>
+              </div>
             ) : filteredMatches.length === 0 ? (
               <div className="text-center py-12 text-xs sm:text-sm text-foreground/50 glass rounded-3xl border border-card-border/40">
                 Ningún partido coincide con los filtros aplicados.
@@ -774,13 +987,15 @@ export default function Home() {
             ) : (
               <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                 {filteredMatches.map((match) => {
-                  const prediction = predictions.find(p => p.matchId === match.id);
+                  const prediction = predictions.find(
+                    (p) => p.matchId === match.id,
+                  );
                   return (
-                    <MatchCard 
-                      key={match.id} 
-                      match={match} 
-                      prediction={prediction} 
-                      userId={user.uid} 
+                    <MatchCard
+                      key={match.id}
+                      match={match}
+                      prediction={prediction}
+                      userId={user.uid}
                       onPredictionSaved={handlePredictionSaved}
                     />
                   );
@@ -789,20 +1004,29 @@ export default function Home() {
             )}
           </>
         ) : activeTab === "leaderboard" ? (
-          <Leaderboard currentUserId={user.uid} />
+          <Leaderboard currentUserId={user.uid} matches={matches} />
+        ) : activeTab === "special" ? (
+          <SpecialPredictionsTab userId={user.uid} matches={matches} />
         ) : (
           /* Profile Tab */
           <div className="space-y-6 max-w-xl mx-auto w-full">
             <div className="glass p-4 sm:p-6 rounded-3xl space-y-4 sm:space-y-6 border border-card-border/60">
-              <h2 className="text-lg sm:text-xl font-bold text-foreground">Configuración de Perfil</h2>
-              
+              <h2 className="text-lg sm:text-xl font-bold text-foreground">
+                Configuración de Perfil
+              </h2>
+
               <div className="flex flex-col items-center gap-3 sm:gap-4 py-3 sm:py-4 border-b border-card-border/45">
                 <img
-                  src={user.photoURL || `https://api.dicebear.com/7.x/adventurer/svg?seed=${customDisplayName || user.displayName}`}
+                  src={
+                    user.photoURL ||
+                    `https://api.dicebear.com/7.x/adventurer/svg?seed=${customDisplayName || user.displayName}`
+                  }
                   alt="Avatar"
                   className="w-20 h-20 sm:w-24 sm:h-24 rounded-full border-2 border-gold shadow-lg object-cover bg-background"
                 />
-                <span className="text-[10px] sm:text-xs text-foreground/50 font-medium">Avatar de tu cuenta de Google</span>
+                <span className="text-[10px] sm:text-xs text-foreground/50 font-medium">
+                  Avatar de tu cuenta de Google
+                </span>
               </div>
 
               <div className="space-y-2">
@@ -821,14 +1045,16 @@ export default function Home() {
                     onClick={handleUpdateName}
                     disabled={isSavingName || !customDisplayName.trim()}
                     className={`h-10 sm:h-11 px-5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5
-                      ${nameSaved
-                        ? "bg-green-500/20 text-green-600 border border-green-500/30"
-                        : "bg-gold text-white hover:bg-yellow-600 disabled:opacity-50"
+                      ${
+                        nameSaved
+                          ? "bg-green-500/20 text-green-600 border border-green-500/30"
+                          : "bg-gold text-white hover:bg-yellow-600 disabled:opacity-50"
                       }`}
                   >
                     {nameSaved ? (
                       <>
-                        <CheckCircle className="w-4 h-4 flex-shrink-0" /> Guardado
+                        <CheckCircle className="w-4 h-4 flex-shrink-0" />{" "}
+                        Guardado
                       </>
                     ) : isSavingName ? (
                       "Guardando..."
@@ -847,9 +1073,11 @@ export default function Home() {
                 Zona de Peligro
               </h3>
               <p className="text-[11px] sm:text-xs text-foreground/75 leading-relaxed">
-                Si eliminas tu cuenta, se borrarán todos tus datos de Firestore (predicciones, perfil, puntaje acumulado) y tu cuenta de autenticación de forma permanente.
+                Si eliminas tu cuenta, se borrarán todos tus datos de Firestore
+                (predicciones, perfil, puntaje acumulado) y tu cuenta de
+                autenticación de forma permanente.
               </p>
-              
+
               <button
                 onClick={() => setShowDeleteModal(true)}
                 className="w-full sm:w-auto bg-red-500/10 hover:bg-red-500/20 text-red-500 border border-red-500/30 font-bold py-2 sm:py-2.5 px-4 sm:px-5 rounded-xl text-xs transition-colors cursor-pointer"
@@ -873,7 +1101,7 @@ export default function Home() {
               onClick={() => setShowDeleteModal(false)}
               className="absolute inset-0 bg-background/80 backdrop-blur-sm"
             />
-            
+
             {/* Modal Box */}
             <motion.div
               initial={{ scale: 0.95, opacity: 0 }}
@@ -884,11 +1112,15 @@ export default function Home() {
               <div className="w-10 h-10 sm:w-12 sm:h-12 bg-red-500/15 text-red-500 rounded-full flex items-center justify-center mx-auto">
                 <AlertCircle className="w-5 h-5 sm:w-6 sm:h-6" />
               </div>
-              
+
               <div className="space-y-1.5 sm:space-y-2">
-                <h3 className="text-lg sm:text-xl font-bold text-red-500">¿Eliminar cuenta permanentemente?</h3>
+                <h3 className="text-lg sm:text-xl font-bold text-red-500">
+                  ¿Eliminar cuenta permanentemente?
+                </h3>
                 <p className="text-xs sm:text-sm text-foreground/75 leading-relaxed">
-                  Esta acción es **completamente irreversible**. Se perderán todas tus predicciones guardadas, tu perfil y tus puntos en el leaderboard.
+                  Esta acción es **completamente irreversible**. Se perderán
+                  todas tus predicciones guardadas, tu perfil y tus puntos en el
+                  leaderboard.
                 </p>
               </div>
 
@@ -900,8 +1132,12 @@ export default function Home() {
                   onChange={(e) => setConfirmDelete(e.target.checked)}
                   className="mt-0.5 w-4 h-4 accent-red-500 rounded cursor-pointer flex-shrink-0"
                 />
-                <label htmlFor="confirm-delete-checkbox" className="text-[10px] sm:text-xs text-foreground/80 font-medium select-none cursor-pointer leading-normal">
-                  Entiendo que esta acción es irreversible y quiero eliminar permanentemente todos mis datos.
+                <label
+                  htmlFor="confirm-delete-checkbox"
+                  className="text-[10px] sm:text-xs text-foreground/80 font-medium select-none cursor-pointer leading-normal"
+                >
+                  Entiendo que esta acción es irreversible y quiero eliminar
+                  permanentemente todos mis datos.
                 </label>
               </div>
 
