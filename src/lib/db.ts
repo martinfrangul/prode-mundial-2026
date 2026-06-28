@@ -63,18 +63,24 @@ export async function getUserPredictions(userId: string): Promise<Prediction[]> 
   } as Prediction));
 }
 
-export async function savePrediction(userId: string, matchId: string, scoreA: number, scoreB: number) {
+export async function savePrediction(userId: string, matchId: string, scoreA: number, scoreB: number, predictedAdvancingTeam?: string) {
   const predictionId = `${userId}_${matchId}`;
   const predictionRef = doc(db, "predictions", predictionId);
   
-  await setDoc(predictionRef, {
+  const data: any = {
     id: predictionId,
     userId,
     matchId,
     predictedScoreA: scoreA,
     predictedScoreB: scoreB,
     pointsEarned: null
-  }, { merge: true });
+  };
+  
+  if (predictedAdvancingTeam !== undefined) {
+    data.predictedAdvancingTeam = predictedAdvancingTeam;
+  }
+  
+  await setDoc(predictionRef, data, { merge: true });
 }
 
 export async function updateUserDisplayName(userId: string, displayName: string) {

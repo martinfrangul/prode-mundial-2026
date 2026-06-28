@@ -13,6 +13,7 @@ interface MatchCardProps {
 export default function MatchCard({ match, prediction, userId, onPredictionSaved }: MatchCardProps) {
   const [scoreA, setScoreA] = useState<number | "">(prediction?.predictedScoreA ?? "");
   const [scoreB, setScoreB] = useState<number | "">(prediction?.predictedScoreB ?? "");
+  const [advancingTeam, setAdvancingTeam] = useState<string>(prediction?.predictedAdvancingTeam ?? "");
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
@@ -21,9 +22,11 @@ export default function MatchCard({ match, prediction, userId, onPredictionSaved
 
   const handleSave = async () => {
     if (scoreA === "" || scoreB === "") return;
+    if (isPlayoffDraw && advancingTeam === "") return;
+    
     setIsSaving(true);
     try {
-      await savePrediction(userId, match.id, Number(scoreA), Number(scoreB));
+      await savePrediction(userId, match.id, Number(scoreA), Number(scoreB), isPlayoffDraw ? advancingTeam : undefined);
       setSaved(true);
       if (onPredictionSaved) {
         onPredictionSaved({
@@ -32,7 +35,9 @@ export default function MatchCard({ match, prediction, userId, onPredictionSaved
           matchId: match.id,
           predictedScoreA: Number(scoreA),
           predictedScoreB: Number(scoreB),
-          pointsEarned: prediction?.pointsEarned ?? null
+          predictedAdvancingTeam: isPlayoffDraw ? advancingTeam : undefined,
+          pointsEarned: prediction?.pointsEarned ?? null,
+          advancingPointsEarned: prediction?.advancingPointsEarned ?? null
         });
       }
       setTimeout(() => setSaved(false), 2000);
@@ -51,15 +56,25 @@ export default function MatchCard({ match, prediction, userId, onPredictionSaved
   });
 
   const getPointsBadgeClass = (points: number) => {
-    if (points === 3) return "bg-amber-500/20 text-amber-600 border border-amber-500/30";
-    if (points === 1) return "bg-yellow-500/20 text-yellow-600 border border-yellow-500/30";
+    if (points === 3 || points === 6) return "bg-amber-500/20 text-amber-600 border border-amber-500/30";
+    if (points === 1 || points === 4) return "bg-yellow-500/20 text-yellow-600 border border-yellow-500/30";
     return "bg-foreground/10 text-foreground/60 border border-card-border";
   };
 
-  const getPointsLabel = (points: number) => {
-    if (points === 3) return "Exacto (+3 pts)";
-    if (points === 1) return "Acierto (+1 pt)";
-    return "Errado (0 pts)";
+  const getPointsLabel = (prediction: Prediction) => {
+    const totalPoints = (prediction.pointsEarned || 0) + (prediction.advancingPointsEarned || 0);
+    if (totalPoints === 0 && prediction.pointsEarned !== null) return "Errado (0 pts)";
+    if (prediction.pointsEarned === null) return "";
+    
+    let label = "";
+    if (prediction.pointsEarned === 3) label += "Exacto (+3)";
+    else if (prediction.pointsEarned === 1) label += "Acierto (+1)";
+    
+    if (prediction.advancingPointsEarned === 3) {
+      label += " | Penales (+3)";
+    }
+    
+    return label || "Errado (0 pts)";
   };
 
   return (
@@ -162,36 +177,69 @@ export default function MatchCard({ match, prediction, userId, onPredictionSaved
         </div>
       </div>
 
+      {/* Advancing Team Prediction for Playoffs */}
+      {!isLocked && isPlayoffDraw && (
+        <div className="mt-2 pt-3 border-t border-card-border/40 flex flex-col gap-2">
+          <span className="text-[10px] sm:text-[11px] font-bold uppercase tracking-wider text-foreground/70 text-center">
+            ¿Quién avanza en penales?
+          </span>
+          <div className="flex gap-2">
+            <button
+              onClick={() => setAdvancingTeam(match.teamA.code)}
+              className={`flex-1 py-1.5 sm:py-2 rounded-lg text-xs font-semibold transition-colors border ${
+                advancingTeam === match.teamA.code
+                  ? "bg-gold/20 border-gold/50 text-gold shadow-inner"
+                  : "bg-background border-card-border hover:border-gold/30 text-foreground/70"
+              }`}
+            >
+              {match.teamA.code}
+            </button>
+            <button
+              onClick={() => setAdvancingTeam(match.teamB.code)}
+              className={`flex-1 py-1.5 sm:py-2 rounded-lg text-xs font-semibold transition-colors border ${
+                advancingTeam === match.teamB.code
+                  ? "bg-gold/20 border-gold/50 text-gold shadow-inner"
+                  : "bg-background border-card-border hover:border-gold/30 text-foreground/70"
+              }`}
+            >
+              {match.teamB.code}
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Bottom: Action/Prediction summary */}
       {isLocked ? (
         <div className="mt-0.5 pt-3 border-t border-card-border/40 flex items-center justify-between gap-2">
           <div className="flex flex-col min-w-0">
             <span className="text-[9px] sm:text-[10px] font-bold uppercase tracking-wider text-foreground/45">Tu Pronóstico</span>
-            <span className="text-xs sm:text-sm font-extrabold text-foreground/75 truncate">
-              {prediction && prediction.predictedScoreA !== null && prediction.predictedScoreB !== null ? (
-                `${prediction.predictedScoreA} - ${prediction.predictedScoreB}`
-              ) : (
-                <span className="text-red-400 font-semibold text-[11px] sm:text-xs italic">Sin pronóstico</span>
+            <div className="flex flex-col gap-0.5">
+              <span className="text-xs sm:text-sm font-extrabold text-foreground/75 truncate">
+                {prediction && prediction.predictedScoreA !== null && prediction.predictedScoreB !== null ? (
+                  `${prediction.predictedScoreA} - ${prediction.predictedScoreB}`
+                ) : (
+                  <span className="text-red-400 font-semibold text-[11px] sm:text-xs italic">Sin pronóstico</span>
+                )}
+              </span>
+              {prediction?.predictedAdvancingTeam && (
+                <span className="text-[10px] text-foreground/50 italic">
+                  Avanza {prediction.predictedAdvancingTeam}
+                </span>
               )}
-            </span>
+            </div>
           </div>
 
           {match.status === "finished" && prediction && prediction.pointsEarned !== null && (
-            <div className={`px-2.5 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold flex-shrink-0 ${getPointsBadgeClass(prediction.pointsEarned)}`}>
-              {getPointsLabel(prediction.pointsEarned)}
+            <div className={`px-2.5 py-0.5 sm:py-1 rounded-full text-[10px] sm:text-xs font-bold flex-shrink-0 text-right ${getPointsBadgeClass((prediction.pointsEarned || 0) + (prediction.advancingPointsEarned || 0))}`}>
+              {getPointsLabel(prediction)}
             </div>
           )}
         </div>
       ) : (
         <div className="flex flex-col gap-2 w-full mt-0.5">
-          {isPlayoffDraw && (
-            <div className="text-[11px] text-red-400 font-semibold text-center bg-red-500/5 border border-red-500/10 rounded-lg py-1 px-2">
-              No se permiten empates en eliminatorias.
-            </div>
-          )}
           <button
             onClick={handleSave}
-            disabled={isSaving || scoreA === "" || scoreB === "" || isPlayoffDraw}
+            disabled={isSaving || scoreA === "" || scoreB === "" || (isPlayoffDraw && advancingTeam === "")}
             className={`w-full py-2 sm:py-2.5 rounded-xl transition-all text-xs sm:text-sm font-bold flex items-center justify-center gap-2 cursor-pointer
               ${saved 
                 ? "bg-green-500/20 text-green-600 border border-green-500/30" 

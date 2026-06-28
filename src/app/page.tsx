@@ -194,28 +194,50 @@ export default function Home() {
     });
   };
 
-  // Score calculation logic:
-  // 3 points: exact score
-  // 1 point: correct outcome (winner or draw) but incorrect score
-  // 0 points: incorrect outcome
   const calculatePoints = (
     predA: number | null,
     predB: number | null,
     actA: number,
     actB: number,
-  ): number => {
-    if (predA === null || predB === null) return 0;
+    predAdvancing: string | undefined,
+    actAdvancing: string | undefined,
+    wentToPenalties: boolean | undefined,
+    teamACode: string,
+    teamBCode: string
+  ): { base: number; advancing: number } => {
+    if (predA === null || predB === null) return { base: 0, advancing: 0 };
 
+    let basePoints = 0;
+    let advancingPoints = 0;
+
+    const predDraw = predA === predB;
+    const actDraw = actA === actB;
     const predWinner = predA > predB ? "A" : predA < predB ? "B" : "Draw";
     const actWinner = actA > actB ? "A" : actA < actB ? "B" : "Draw";
 
+    // 1. Calculate Base Points
     if (predA === actA && predB === actB) {
-      return 3;
+      basePoints = 3;
     } else if (predWinner === actWinner) {
-      return 1;
-    } else {
-      return 0;
+      basePoints = 1;
+    } else if (wentToPenalties && actAdvancing) {
+      // Si pronosticó ganador directo pero fueron a penales, suma 1 pt si su ganador avanzó
+      if (!predDraw) {
+        const predWinnerCode = predWinner === "A" ? teamACode : teamBCode;
+        if (predWinnerCode === actAdvancing) {
+          basePoints = 1;
+        }
+      }
     }
+
+    // 2. Calculate Advancing Points
+    if (wentToPenalties && actAdvancing && predDraw && predAdvancing) {
+      if (predAdvancing === actAdvancing) {
+        advancingPoints = 3;
+      }
+    }
+
+    return { base: basePoints, advancing: advancingPoints };
   };
 
   const handleSyncResults = async () => {
@@ -283,6 +305,8 @@ export default function Home() {
 
         let newTeamA = match.teamA;
         let newTeamB = match.teamB;
+        let newPenalties = match.penalties;
+        let newAdvancingTeamCode = match.advancingTeamCode;
 
         if (apiMatches.length > 0) {
           // Find match in external API results by ID first, then fallback to country codes
@@ -329,6 +353,13 @@ export default function Home() {
             const resolvedTeamA = isHomeTeamA ? mappedHomeTeam : mappedAwayTeam;
             const resolvedTeamB = isHomeTeamA ? mappedAwayTeam : mappedHomeTeam;
 
+            const apiPenalties = apiMatch.score?.duration === "PENALTY_SHOOTOUT" || (apiMatch.score?.penalties && (apiMatch.score.penalties.home > 0 || apiMatch.score.penalties.away > 0)) ? true : false;
+            let apiAdvancingTeamCode: string | undefined = undefined;
+            if (apiPenalties && apiMatch.score?.winner) {
+              if (apiMatch.score.winner === "HOME_TEAM") apiAdvancingTeamCode = mappedHomeTeam.code;
+              if (apiMatch.score.winner === "AWAY_TEAM") apiAdvancingTeamCode = mappedAwayTeam.code;
+            }
+
             if (
               status !== newStatus ||
               actualScoreA !== newScoreA ||
@@ -336,13 +367,17 @@ export default function Home() {
               match.teamA.code !== resolvedTeamA.code ||
               match.teamB.code !== resolvedTeamB.code ||
               match.teamA.name !== resolvedTeamA.name ||
-              match.teamB.name !== resolvedTeamB.name
+              match.teamB.name !== resolvedTeamB.name ||
+              match.penalties !== apiPenalties ||
+              match.advancingTeamCode !== apiAdvancingTeamCode
             ) {
               status = newStatus;
               actualScoreA = newScoreA;
               actualScoreB = newScoreB;
               newTeamA = resolvedTeamA;
               newTeamB = resolvedTeamB;
+              newPenalties = apiPenalties;
+              newAdvancingTeamCode = apiAdvancingTeamCode;
               matchChanged = true;
             }
           }
@@ -353,6 +388,11 @@ export default function Home() {
             status = "finished";
             actualScoreA = Math.floor(Math.random() * 4);
             actualScoreB = Math.floor(Math.random() * 4);
+            // Mock penalties 30% of time if it's a draw and playoff
+            if (match.stage === "playoff" && actualScoreA === actualScoreB && Math.random() > 0.7) {
+              newPenalties = true;
+              newAdvancingTeamCode = Math.random() > 0.5 ? match.teamA.code : match.teamB.code;
+            }
             matchChanged = true;
           }
         }
@@ -365,6 +405,8 @@ export default function Home() {
             actualScoreB,
             teamA: newTeamA,
             teamB: newTeamB,
+            ...(newPenalties ? { penalties: newPenalties } : {}),
+            ...(newAdvancingTeamCode ? { advancingTeamCode: newAdvancingTeamCode } : {})
           });
           matchesUpdated++;
         }
@@ -376,6 +418,8 @@ export default function Home() {
           actualScoreB,
           teamA: newTeamA,
           teamB: newTeamB,
+          penalties: newPenalties,
+          advancingTeamCode: newAdvancingTeamCode
         };
       });
 
@@ -389,28 +433,39 @@ export default function Home() {
         if (!match) return;
 
         let pointsEarned: number | null = null;
+        let advancingPointsEarned: number | null = null;
 
         if (
           match.status === "finished" &&
           match.actualScoreA !== null &&
           match.actualScoreB !== null
         ) {
-          pointsEarned = calculatePoints(
+          const res = calculatePoints(
             pred.predictedScoreA,
             pred.predictedScoreB,
             match.actualScoreA,
             match.actualScoreB,
+            pred.predictedAdvancingTeam,
+            match.advancingTeamCode,
+            match.penalties,
+            match.teamA.code,
+            match.teamB.code
           );
+          pointsEarned = res.base;
+          advancingPointsEarned = res.advancing;
         }
 
-        if (pred.pointsEarned !== pointsEarned) {
+        if (pred.pointsEarned !== pointsEarned || pred.advancingPointsEarned !== advancingPointsEarned) {
           const predRefDoc = doc(db, "predictions", pred.id);
-          batch.update(predRefDoc, { pointsEarned });
+          batch.update(predRefDoc, { 
+            pointsEarned,
+            ...(advancingPointsEarned !== null ? { advancingPointsEarned } : {})
+          });
           predictionsUpdated++;
         }
 
         if (pointsEarned !== null && userScores[pred.userId] !== undefined) {
-          userScores[pred.userId] += pointsEarned;
+          userScores[pred.userId] += pointsEarned + (advancingPointsEarned || 0);
         }
       });
 

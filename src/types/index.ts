@@ -14,6 +14,8 @@ export interface Match {
   actualScoreA: number | null;
   actualScoreB: number | null;
   group?: string; // e.g., "A", "B"
+  penalties?: boolean;
+  advancingTeamCode?: string; // Team code that advances (if penalties)
 }
 
 export interface Prediction {
@@ -22,7 +24,9 @@ export interface Prediction {
   matchId: string;
   predictedScoreA: number | null;
   predictedScoreB: number | null;
+  predictedAdvancingTeam?: string; // Team code they think will advance (only if draw)
   pointsEarned: number | null;
+  advancingPointsEarned?: number | null; // Points earned for predicting the correct advancing team
 }
 
 export interface SpecialPrediction {

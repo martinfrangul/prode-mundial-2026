@@ -135,23 +135,36 @@ async function handleSeed(request: NextRequest) {
 
         const group = m.group ? m.group.replace("GROUP_", "") : undefined;
 
+        const homeCode = m.homeTeam.tla || m.homeTeam.shortName?.substring(0, 3).toUpperCase() || "TBD";
+        const awayCode = m.awayTeam.tla || m.awayTeam.shortName?.substring(0, 3).toUpperCase() || "TBD";
+
+        const penalties = m.score?.duration === "PENALTY_SHOOTOUT" || (m.score?.penalties && (m.score.penalties.home > 0 || m.score.penalties.away > 0)) ? true : false;
+        
+        let advancingTeamCode: string | undefined = undefined;
+        if (penalties && m.score?.winner) {
+          if (m.score.winner === "HOME_TEAM") advancingTeamCode = homeCode;
+          if (m.score.winner === "AWAY_TEAM") advancingTeamCode = awayCode;
+        }
+
         return {
           id: String(m.id),
           teamA: {
             name: m.homeTeam.shortName || m.homeTeam.name || "TBD",
-            code: m.homeTeam.tla || m.homeTeam.shortName?.substring(0, 3).toUpperCase() || "TBD",
-            flagUrl: m.homeTeam.crest || undefined
+            code: homeCode,
+            ...(m.homeTeam.crest ? { flagUrl: m.homeTeam.crest } : {})
           },
           teamB: {
             name: m.awayTeam.shortName || m.awayTeam.name || "TBD",
-            code: m.awayTeam.tla || m.awayTeam.shortName?.substring(0, 3).toUpperCase() || "TBD",
-            flagUrl: m.awayTeam.crest || undefined
+            code: awayCode,
+            ...(m.awayTeam.crest ? { flagUrl: m.awayTeam.crest } : {})
           },
           kickoffTime: m.utcDate,
           stage,
           status,
           actualScoreA: m.score?.fullTime?.home !== undefined ? m.score.fullTime.home : null,
           actualScoreB: m.score?.fullTime?.away !== undefined ? m.score.fullTime.away : null,
+          ...(penalties ? { penalties } : {}),
+          ...(advancingTeamCode ? { advancingTeamCode } : {}),
           ...(group ? { group } : {})
         } as Match;
       });
