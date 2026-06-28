@@ -46,6 +46,21 @@ body {
   }
 }
 
+.custom-scrollbar::-webkit-scrollbar {
+  width: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--foreground) 10%, transparent);
+  border-radius: 4px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--foreground) 20%, transparent);
+}
+
+
 /* Hide spin buttons in number inputs */
 input::-webkit-outer-spin-button,
 input::-webkit-inner-spin-button {

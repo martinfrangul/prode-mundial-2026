@@ -1,7 +1,8 @@
-import { Match, Prediction } from "@/types";
+import { Match, Prediction, UserProfile } from "@/types";
 import { useState } from "react";
-import { savePrediction } from "@/lib/db";
-import { Check } from "lucide-react";
+import { savePrediction, getMatchPredictions, getUsersCached } from "@/lib/db";
+import { Check, ChevronDown, ChevronUp, Users, Loader2 } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
 
 interface MatchCardProps {
   match: Match;
@@ -16,6 +17,65 @@ export default function MatchCard({ match, prediction, userId, onPredictionSaved
   const [advancingTeam, setAdvancingTeam] = useState<string>(prediction?.predictedAdvancingTeam ?? "");
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [showOthers, setShowOthers] = useState(false);
+  const [othersPredictions, setOthersPredictions] = useState<Prediction[]>([]);
+  const [usersList, setUsersList] = useState<UserProfile[]>([]);
+  const [isLoadingOthers, setIsLoadingOthers] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  const handleToggleOthers = async () => {
+    if (showOthers) {
+      setShowOthers(false);
+      return;
+    }
+    
+    setShowOthers(true);
+    if (othersPredictions.length === 0 || usersList.length === 0) {
+      setIsLoadingOthers(true);
+      setLoadError(null);
+      try {
+        const [preds, users] = await Promise.all([
+          getMatchPredictions(match.id),
+          getUsersCached()
+        ]);
+        setOthersPredictions(preds);
+        setUsersList(users);
+      } catch (err: any) {
+        console.error("Error loading predictions", err);
+        setLoadError("No se pudieron cargar las predicciones");
+      } finally {
+        setIsLoadingOthers(false);
+      }
+    }
+  };
+
+  const userPredictionDisplays = () => {
+    const displays = usersList.map((u) => {
+      const pred = othersPredictions.find((p) => p.userId === u.uid);
+      return {
+        user: u,
+        prediction: pred,
+      };
+    });
+
+    return displays.sort((a, b) => {
+      const hasPredA = !!a.prediction;
+      const hasPredB = !!b.prediction;
+      if (hasPredA !== hasPredB) {
+        return hasPredA ? -1 : 1;
+      }
+      
+      if (a.prediction && b.prediction) {
+        const pointsA = (a.prediction.pointsEarned ?? 0) + (a.prediction.advancingPointsEarned ?? 0);
+        const pointsB = (b.prediction.pointsEarned ?? 0) + (b.prediction.advancingPointsEarned ?? 0);
+        if (pointsA !== pointsB) {
+          return pointsB - pointsA;
+        }
+      }
+      
+      return a.user.displayName.localeCompare(b.user.displayName);
+    });
+  };
 
   const isLocked = new Date() > new Date(match.kickoffTime) || match.status !== "scheduled";
   const isPlayoffDraw = match.stage === "playoff" && scoreA !== "" && scoreB !== "" && Number(scoreA) === Number(scoreB);
@@ -256,6 +316,111 @@ export default function MatchCard({ match, prediction, userId, onPredictionSaved
               "Guardar Predicción"
             )}
           </button>
+        </div>
+      )}
+
+      {isLocked && (
+        <div className="mt-3 pt-3 border-t border-card-border/30">
+          <button
+            onClick={handleToggleOthers}
+            className="w-full py-2 px-3 rounded-xl bg-foreground/5 border border-card-border/40 text-[11px] sm:text-xs font-bold text-foreground/70 hover:bg-foreground/10 hover:text-foreground hover:border-gold/30 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <Users className="w-3.5 h-3.5 text-gold/80" />
+            {showOthers ? "Ocultar predicciones de todos" : "Ver predicciones de todos"}
+            {showOthers ? (
+              <ChevronUp className="w-3.5 h-3.5 ml-0.5" />
+            ) : (
+              <ChevronDown className="w-3.5 h-3.5 ml-0.5" />
+            )}
+          </button>
+
+          <AnimatePresence>
+            {showOthers && (
+              <motion.div
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: "auto", opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
+                className="overflow-hidden mt-3"
+              >
+                {isLoadingOthers ? (
+                  <div className="flex items-center justify-center py-6 gap-2 text-xs text-foreground/50">
+                    <Loader2 className="w-4 h-4 animate-spin text-gold" />
+                    <span>Cargando apuestas...</span>
+                  </div>
+                ) : loadError ? (
+                  <div className="text-center py-4 text-xs text-red-400">
+                    {loadError}
+                  </div>
+                ) : userPredictionDisplays().length === 0 ? (
+                  <div className="text-center py-4 text-xs text-foreground/50">
+                    No hay otros usuarios registrados
+                  </div>
+                ) : (
+                  <div className="max-h-60 overflow-y-auto space-y-1.5 pr-1 custom-scrollbar">
+                    {userPredictionDisplays().map(({ user: u, prediction: pred }) => {
+                      const isSelf = u.uid === userId;
+                      const points = pred && pred.pointsEarned !== null ? (pred.pointsEarned ?? 0) + (pred.advancingPointsEarned ?? 0) : 0;
+                      const hasPrediction = pred && pred.predictedScoreA !== null && pred.predictedScoreB !== null;
+                      
+                      return (
+                        <div
+                          key={u.uid}
+                          className={`flex items-center justify-between p-2 rounded-xl border text-[11px] sm:text-xs transition-colors ${
+                            isSelf
+                              ? "bg-gold/10 border-gold/30"
+                              : "bg-background/45 border-card-border/40 hover:bg-background/70"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <img
+                              src={u.photoURL || `https://api.dicebear.com/7.x/adventurer/svg?seed=${u.displayName}`}
+                              alt={u.displayName}
+                              className="w-5.5 h-5.5 sm:w-6 sm:h-6 rounded-full border border-card-border bg-background"
+                            />
+                            <span className={`font-semibold truncate max-w-[90px] sm:max-w-[120px] ${isSelf ? "text-gold font-bold" : "text-foreground/80"}`}>
+                              {u.displayName} {isSelf && " (Tú)"}
+                            </span>
+                          </div>
+                          
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <div className="font-bold text-foreground text-right">
+                              {hasPrediction ? (
+                                <div className="flex flex-col items-end">
+                                  <span>{pred.predictedScoreA} - {pred.predictedScoreB}</span>
+                                  {pred.predictedAdvancingTeam && (
+                                    <span className="text-[8px] text-foreground/50 font-normal">
+                                      ({pred.predictedAdvancingTeam} avanza)
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                <span className="text-foreground/40 font-normal italic text-[10px]">
+                                  Sin pronóstico
+                                </span>
+                              )}
+                            </div>
+                            
+                            {match.status === "finished" && hasPrediction && pred.pointsEarned !== null && (
+                              <span className={`px-1.5 py-0.5 rounded-md text-[9px] font-extrabold ${
+                                points === 3 || points === 6
+                                  ? "bg-amber-500/20 text-amber-500 border border-amber-500/30"
+                                  : points === 1 || points === 4
+                                  ? "bg-yellow-500/20 text-yellow-500 border border-yellow-500/30"
+                                  : "bg-foreground/5 text-foreground/40 border border-card-border"
+                              }`}>
+                                {points > 0 ? `+${points}` : "0"}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
       )}
     </div>

@@ -140,3 +140,27 @@ export async function markSpecialModalSeen(userId: string) {
   const userRef = doc(db, "users", userId);
   await setDoc(userRef, { hasSeenSpecialModal: true }, { merge: true });
 }
+
+export async function getMatchPredictions(matchId: string): Promise<Prediction[]> {
+  const predictionsRef = collection(db, "predictions");
+  const q = query(predictionsRef, where("matchId", "==", matchId));
+  const querySnapshot = await getDocs(q);
+  
+  return querySnapshot.docs.map(doc => ({
+    id: doc.id,
+    ...doc.data()
+  } as Prediction));
+}
+
+let cachedUsers: UserProfile[] | null = null;
+
+export async function getUsersCached(): Promise<UserProfile[]> {
+  if (cachedUsers) return cachedUsers;
+  cachedUsers = await getUserLeaderboard();
+  return cachedUsers;
+}
+
+export function clearUsersCache() {
+  cachedUsers = null;
+}
+
