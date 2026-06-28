@@ -99,7 +99,15 @@ async function handleSeed(request: NextRequest) {
   let source = "";
 
   try {
-    if (apiKey && !useLocalFallback) {
+    if (!useLocalFallback) {
+      if (!apiKey) {
+        return NextResponse.json({
+          success: false,
+          error: "FOOTBALL_API_KEY no configurado",
+          message: "La clave API (FOOTBALL_API_KEY) no está configurada en el servidor. Si la acabas de configurar en .env.local, asegúrate de reiniciar el servidor de Next.js. Si estás en producción, asegúrate de haber configurado esta variable de entorno en tu plataforma de hosting (Vercel, Firebase, etc.)."
+        }, { status: 400 });
+      }
+
       source = "Football-Data API (Mundial)";
       const response = await fetch("https://api.football-data.org/v4/competitions/WC/matches", {
         headers: { "X-Auth-Token": apiKey },

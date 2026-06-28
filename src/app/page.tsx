@@ -281,6 +281,9 @@ export default function Home() {
         let actualScoreB = match.actualScoreB;
         let matchChanged = false;
 
+        let newTeamA = match.teamA;
+        let newTeamB = match.teamB;
+
         if (apiMatches.length > 0) {
           // Find match in external API results by ID first, then fallback to country codes
           let apiMatch = apiMatches.find((m: any) => String(m.id) === match.id);
@@ -297,8 +300,7 @@ export default function Home() {
 
           if (apiMatch) {
             const isHomeTeamA =
-              apiMatch.homeTeam.tla === match.teamA.code ||
-              apiMatch.homeTeam.name === match.teamA.name;
+              match.teamA.code === "TBD" ? true : (apiMatch.homeTeam.tla === match.teamA.code || apiMatch.homeTeam.name === match.teamA.name);
             const apiStatus = apiMatch.status;
 
             let newStatus: typeof match.status = "scheduled";
@@ -307,20 +309,40 @@ export default function Home() {
               newStatus = "in_play";
 
             const newScoreA = isHomeTeamA
-              ? apiMatch.score.fullTime.home
-              : apiMatch.score.fullTime.away;
+              ? (apiMatch.score?.fullTime?.home ?? null)
+              : (apiMatch.score?.fullTime?.away ?? null);
             const newScoreB = isHomeTeamA
-              ? apiMatch.score.fullTime.away
-              : apiMatch.score.fullTime.home;
+              ? (apiMatch.score?.fullTime?.away ?? null)
+              : (apiMatch.score?.fullTime?.home ?? null);
+
+            const mappedHomeTeam = {
+              name: apiMatch.homeTeam.shortName || apiMatch.homeTeam.name || "TBD",
+              code: apiMatch.homeTeam.tla || apiMatch.homeTeam.shortName?.substring(0, 3).toUpperCase() || "TBD",
+              ...(apiMatch.homeTeam.crest ? { flagUrl: apiMatch.homeTeam.crest } : {})
+            };
+            const mappedAwayTeam = {
+              name: apiMatch.awayTeam.shortName || apiMatch.awayTeam.name || "TBD",
+              code: apiMatch.awayTeam.tla || apiMatch.awayTeam.shortName?.substring(0, 3).toUpperCase() || "TBD",
+              ...(apiMatch.awayTeam.crest ? { flagUrl: apiMatch.awayTeam.crest } : {})
+            };
+
+            const resolvedTeamA = isHomeTeamA ? mappedHomeTeam : mappedAwayTeam;
+            const resolvedTeamB = isHomeTeamA ? mappedAwayTeam : mappedHomeTeam;
 
             if (
               status !== newStatus ||
               actualScoreA !== newScoreA ||
-              actualScoreB !== newScoreB
+              actualScoreB !== newScoreB ||
+              match.teamA.code !== resolvedTeamA.code ||
+              match.teamB.code !== resolvedTeamB.code ||
+              match.teamA.name !== resolvedTeamA.name ||
+              match.teamB.name !== resolvedTeamB.name
             ) {
               status = newStatus;
               actualScoreA = newScoreA;
               actualScoreB = newScoreB;
+              newTeamA = resolvedTeamA;
+              newTeamB = resolvedTeamB;
               matchChanged = true;
             }
           }
@@ -341,6 +363,8 @@ export default function Home() {
             status,
             actualScoreA,
             actualScoreB,
+            teamA: newTeamA,
+            teamB: newTeamB,
           });
           matchesUpdated++;
         }
@@ -350,6 +374,8 @@ export default function Home() {
           status,
           actualScoreA,
           actualScoreB,
+          teamA: newTeamA,
+          teamB: newTeamB,
         };
       });
 
