@@ -17,6 +17,7 @@ export default function MatchCard({ match, prediction, userId, onPredictionSaved
   const [saved, setSaved] = useState(false);
 
   const isLocked = new Date() > new Date(match.kickoffTime) || match.status !== "scheduled";
+  const isPlayoffDraw = match.stage === "playoff" && scoreA !== "" && scoreB !== "" && Number(scoreA) === Number(scoreB);
 
   const handleSave = async () => {
     if (scoreA === "" || scoreB === "") return;
@@ -182,25 +183,32 @@ export default function MatchCard({ match, prediction, userId, onPredictionSaved
           )}
         </div>
       ) : (
-        <button
-          onClick={handleSave}
-          disabled={isSaving || scoreA === "" || scoreB === ""}
-          className={`w-full mt-0.5 py-2 sm:py-2.5 rounded-xl transition-all text-xs sm:text-sm font-bold flex items-center justify-center gap-2 cursor-pointer
-            ${saved 
-              ? "bg-green-500/20 text-green-600 border border-green-500/30" 
-              : "bg-gold text-white hover:bg-yellow-600 disabled:opacity-50 disabled:bg-foreground/10 disabled:text-foreground/50"
-            }`}
-        >
-          {saved ? (
-            <>
-              <Check className="w-4 h-4 flex-shrink-0" /> Guardado
-            </>
-          ) : isSaving ? (
-            "Guardando..."
-          ) : (
-            "Guardar Predicción"
+        <div className="flex flex-col gap-2 w-full mt-0.5">
+          {isPlayoffDraw && (
+            <div className="text-[11px] text-red-400 font-semibold text-center bg-red-500/5 border border-red-500/10 rounded-lg py-1 px-2">
+              No se permiten empates en eliminatorias.
+            </div>
           )}
-        </button>
+          <button
+            onClick={handleSave}
+            disabled={isSaving || scoreA === "" || scoreB === "" || isPlayoffDraw}
+            className={`w-full py-2 sm:py-2.5 rounded-xl transition-all text-xs sm:text-sm font-bold flex items-center justify-center gap-2 cursor-pointer
+              ${saved 
+                ? "bg-green-500/20 text-green-600 border border-green-500/30" 
+                : "bg-gold text-white hover:bg-yellow-600 disabled:opacity-50 disabled:bg-foreground/10 disabled:text-foreground/50"
+              }`}
+          >
+            {saved ? (
+              <>
+                <Check className="w-4 h-4 flex-shrink-0" /> Guardado
+              </>
+            ) : isSaving ? (
+              "Guardando..."
+            ) : (
+              "Guardar Predicción"
+            )}
+          </button>
+        </div>
       )}
     </div>
   );
