@@ -1,7 +1,7 @@
 import { Match, Prediction, UserProfile } from "@/types";
 import { useState } from "react";
 import { savePrediction, getMatchPredictions, getUsersCached } from "@/lib/db";
-import { Check, ChevronDown, ChevronUp, Users, Loader2 } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Users, Loader2, Trophy } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
 interface MatchCardProps {
@@ -174,9 +174,18 @@ export default function MatchCard({ match, prediction, userId, onPredictionSaved
                 <span className="font-bold text-[10px] text-foreground/60">{match.teamA.code}</span>
               )}
             </div>
-            <span className={`font-semibold text-sm truncate ${isLocked ? "text-foreground/80" : "text-foreground"}`}>
+            <span className={`font-semibold text-sm truncate ${
+              isLocked && match.penalties && match.advancingTeamCode === match.teamA.code
+                ? "text-amber-500 font-bold"
+                : isLocked 
+                ? "text-foreground/80" 
+                : "text-foreground"
+            }`}>
               {match.teamA.name}
             </span>
+            {isLocked && match.penalties && match.advancingTeamCode === match.teamA.code && (
+              <Trophy className="w-3.5 h-3.5 text-amber-500 fill-amber-500/10 flex-shrink-0 ml-1 inline-block" title="Avanzó por penales" />
+            )}
           </div>
 
           {isLocked ? (
@@ -210,9 +219,18 @@ export default function MatchCard({ match, prediction, userId, onPredictionSaved
                 <span className="font-bold text-[10px] text-foreground/60">{match.teamB.code}</span>
               )}
             </div>
-            <span className={`font-semibold text-sm truncate ${isLocked ? "text-foreground/80" : "text-foreground"}`}>
+            <span className={`font-semibold text-sm truncate ${
+              isLocked && match.penalties && match.advancingTeamCode === match.teamB.code
+                ? "text-amber-500 font-bold"
+                : isLocked 
+                ? "text-foreground/80" 
+                : "text-foreground"
+            }`}>
               {match.teamB.name}
             </span>
+            {isLocked && match.penalties && match.advancingTeamCode === match.teamB.code && (
+              <Trophy className="w-3.5 h-3.5 text-amber-500 fill-amber-500/10 flex-shrink-0 ml-1 inline-block" title="Avanzó por penales" />
+            )}
           </div>
 
           {isLocked ? (

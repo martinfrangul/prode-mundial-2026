@@ -203,7 +203,7 @@ export default function Home() {
     actAdvancing: string | undefined,
     wentToPenalties: boolean | undefined,
     teamACode: string,
-    teamBCode: string
+    teamBCode: string,
   ): { base: number; advancing: number } => {
     if (predA === null || predB === null) return { base: 0, advancing: 0 };
 
@@ -216,18 +216,12 @@ export default function Home() {
     const actWinner = actA > actB ? "A" : actA < actB ? "B" : "Draw";
 
     // 1. Calculate Base Points
-    if (predA === actA && predB === actB) {
+    const isExactMatch = String(predA) === String(actA) && String(predB) === String(actB);
+    
+    if (isExactMatch) {
       basePoints = 3;
     } else if (predWinner === actWinner) {
       basePoints = 1;
-    } else if (wentToPenalties && actAdvancing) {
-      // Si pronosticó ganador directo pero fueron a penales, suma 1 pt si su ganador avanzó
-      if (!predDraw) {
-        const predWinnerCode = predWinner === "A" ? teamACode : teamBCode;
-        if (predWinnerCode === actAdvancing) {
-          basePoints = 1;
-        }
-      }
     }
 
     // 2. Calculate Advancing Points
@@ -324,7 +318,10 @@ export default function Home() {
 
           if (apiMatch) {
             const isHomeTeamA =
-              match.teamA.code === "TBD" ? true : (apiMatch.homeTeam.tla === match.teamA.code || apiMatch.homeTeam.name === match.teamA.name);
+              match.teamA.code === "TBD"
+                ? true
+                : apiMatch.homeTeam.tla === match.teamA.code ||
+                  apiMatch.homeTeam.name === match.teamA.name;
             const apiStatus = apiMatch.status;
 
             let newStatus: typeof match.status = "scheduled";
@@ -332,32 +329,65 @@ export default function Home() {
             else if (["IN_PLAY", "LIVE", "PAUSED"].includes(apiStatus))
               newStatus = "in_play";
 
+            const apiPenalties =
+              apiMatch.score?.duration === "PENALTY_SHOOTOUT" ||
+              (apiMatch.score?.penalties &&
+                (apiMatch.score.penalties.home > 0 ||
+                  apiMatch.score.penalties.away > 0))
+                ? true
+                : false;
+
+            let finalHomeScore = apiMatch.score?.fullTime?.home ?? null;
+            let finalAwayScore = apiMatch.score?.fullTime?.away ?? null;
+
+            if (apiPenalties && apiMatch.score?.penalties) {
+              if (finalHomeScore !== null && apiMatch.score.penalties.home !== undefined) {
+                finalHomeScore -= apiMatch.score.penalties.home;
+              }
+              if (finalAwayScore !== null && apiMatch.score.penalties.away !== undefined) {
+                finalAwayScore -= apiMatch.score.penalties.away;
+              }
+            }
+
             const newScoreA = isHomeTeamA
-              ? (apiMatch.score?.fullTime?.home ?? null)
-              : (apiMatch.score?.fullTime?.away ?? null);
+              ? finalHomeScore
+              : finalAwayScore;
             const newScoreB = isHomeTeamA
-              ? (apiMatch.score?.fullTime?.away ?? null)
-              : (apiMatch.score?.fullTime?.home ?? null);
+              ? finalAwayScore
+              : finalHomeScore;
 
             const mappedHomeTeam = {
-              name: apiMatch.homeTeam.shortName || apiMatch.homeTeam.name || "TBD",
-              code: apiMatch.homeTeam.tla || apiMatch.homeTeam.shortName?.substring(0, 3).toUpperCase() || "TBD",
-              ...(apiMatch.homeTeam.crest ? { flagUrl: apiMatch.homeTeam.crest } : {})
+              name:
+                apiMatch.homeTeam.shortName || apiMatch.homeTeam.name || "TBD",
+              code:
+                apiMatch.homeTeam.tla ||
+                apiMatch.homeTeam.shortName?.substring(0, 3).toUpperCase() ||
+                "TBD",
+              ...(apiMatch.homeTeam.crest
+                ? { flagUrl: apiMatch.homeTeam.crest }
+                : {}),
             };
             const mappedAwayTeam = {
-              name: apiMatch.awayTeam.shortName || apiMatch.awayTeam.name || "TBD",
-              code: apiMatch.awayTeam.tla || apiMatch.awayTeam.shortName?.substring(0, 3).toUpperCase() || "TBD",
-              ...(apiMatch.awayTeam.crest ? { flagUrl: apiMatch.awayTeam.crest } : {})
+              name:
+                apiMatch.awayTeam.shortName || apiMatch.awayTeam.name || "TBD",
+              code:
+                apiMatch.awayTeam.tla ||
+                apiMatch.awayTeam.shortName?.substring(0, 3).toUpperCase() ||
+                "TBD",
+              ...(apiMatch.awayTeam.crest
+                ? { flagUrl: apiMatch.awayTeam.crest }
+                : {}),
             };
 
             const resolvedTeamA = isHomeTeamA ? mappedHomeTeam : mappedAwayTeam;
             const resolvedTeamB = isHomeTeamA ? mappedAwayTeam : mappedHomeTeam;
 
-            const apiPenalties = apiMatch.score?.duration === "PENALTY_SHOOTOUT" || (apiMatch.score?.penalties && (apiMatch.score.penalties.home > 0 || apiMatch.score.penalties.away > 0)) ? true : false;
             let apiAdvancingTeamCode: string | undefined = undefined;
             if (apiPenalties && apiMatch.score?.winner) {
-              if (apiMatch.score.winner === "HOME_TEAM") apiAdvancingTeamCode = mappedHomeTeam.code;
-              if (apiMatch.score.winner === "AWAY_TEAM") apiAdvancingTeamCode = mappedAwayTeam.code;
+              if (apiMatch.score.winner === "HOME_TEAM")
+                apiAdvancingTeamCode = mappedHomeTeam.code;
+              if (apiMatch.score.winner === "AWAY_TEAM")
+                apiAdvancingTeamCode = mappedAwayTeam.code;
             }
 
             if (
@@ -389,9 +419,14 @@ export default function Home() {
             actualScoreA = Math.floor(Math.random() * 4);
             actualScoreB = Math.floor(Math.random() * 4);
             // Mock penalties 30% of time if it's a draw and playoff
-            if (match.stage === "playoff" && actualScoreA === actualScoreB && Math.random() > 0.7) {
+            if (
+              match.stage === "playoff" &&
+              actualScoreA === actualScoreB &&
+              Math.random() > 0.7
+            ) {
               newPenalties = true;
-              newAdvancingTeamCode = Math.random() > 0.5 ? match.teamA.code : match.teamB.code;
+              newAdvancingTeamCode =
+                Math.random() > 0.5 ? match.teamA.code : match.teamB.code;
             }
             matchChanged = true;
           }
@@ -406,7 +441,9 @@ export default function Home() {
             teamA: newTeamA,
             teamB: newTeamB,
             ...(newPenalties ? { penalties: newPenalties } : {}),
-            ...(newAdvancingTeamCode ? { advancingTeamCode: newAdvancingTeamCode } : {})
+            ...(newAdvancingTeamCode
+              ? { advancingTeamCode: newAdvancingTeamCode }
+              : {}),
           });
           matchesUpdated++;
         }
@@ -419,7 +456,7 @@ export default function Home() {
           teamA: newTeamA,
           teamB: newTeamB,
           penalties: newPenalties,
-          advancingTeamCode: newAdvancingTeamCode
+          advancingTeamCode: newAdvancingTeamCode,
         };
       });
 
@@ -449,23 +486,29 @@ export default function Home() {
             match.advancingTeamCode,
             match.penalties,
             match.teamA.code,
-            match.teamB.code
+            match.teamB.code,
           );
           pointsEarned = res.base;
           advancingPointsEarned = res.advancing;
         }
 
-        if (pred.pointsEarned !== pointsEarned || pred.advancingPointsEarned !== advancingPointsEarned) {
+        if (
+          pred.pointsEarned !== pointsEarned ||
+          pred.advancingPointsEarned !== advancingPointsEarned
+        ) {
           const predRefDoc = doc(db, "predictions", pred.id);
-          batch.update(predRefDoc, { 
+          batch.update(predRefDoc, {
             pointsEarned,
-            ...(advancingPointsEarned !== null ? { advancingPointsEarned } : {})
+            ...(advancingPointsEarned !== null
+              ? { advancingPointsEarned }
+              : {}),
           });
           predictionsUpdated++;
         }
 
         if (pointsEarned !== null && userScores[pred.userId] !== undefined) {
-          userScores[pred.userId] += pointsEarned + (advancingPointsEarned || 0);
+          userScores[pred.userId] +=
+            pointsEarned + (advancingPointsEarned || 0);
         }
       });
 
