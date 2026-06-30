@@ -222,6 +222,14 @@ export default function Home() {
       basePoints = 3;
     } else if (predWinner === actWinner) {
       basePoints = 1;
+    } else if (wentToPenalties && actAdvancing) {
+      // Si pronosticó ganador directo pero fueron a penales, suma 1 pt si su ganador avanzó
+      if (!predDraw) {
+        const predWinnerCode = predWinner === "A" ? teamACode : teamBCode;
+        if (predWinnerCode === actAdvancing) {
+          basePoints = 1;
+        }
+      }
     }
 
     // 2. Calculate Advancing Points
