@@ -184,7 +184,9 @@ export default function MatchCard({ match, prediction, userId, onPredictionSaved
               {match.teamA.name}
             </span>
             {isLocked && match.penalties && match.advancingTeamCode === match.teamA.code && (
-              <Trophy className="w-3.5 h-3.5 text-amber-500 fill-amber-500/10 flex-shrink-0 ml-1 inline-block" title="Avanzó por penales" />
+              <span title="Avanzó por penales" className="inline-flex">
+                <Trophy className="w-3.5 h-3.5 text-amber-500 fill-amber-500/10 flex-shrink-0 ml-1 inline-block" />
+              </span>
             )}
           </div>
 
@@ -229,7 +231,9 @@ export default function MatchCard({ match, prediction, userId, onPredictionSaved
               {match.teamB.name}
             </span>
             {isLocked && match.penalties && match.advancingTeamCode === match.teamB.code && (
-              <Trophy className="w-3.5 h-3.5 text-amber-500 fill-amber-500/10 flex-shrink-0 ml-1 inline-block" title="Avanzó por penales" />
+              <span title="Avanzó por penales" className="inline-flex">
+                <Trophy className="w-3.5 h-3.5 text-amber-500 fill-amber-500/10 flex-shrink-0 ml-1 inline-block" />
+              </span>
             )}
           </div>
 
@@ -299,7 +303,7 @@ export default function MatchCard({ match, prediction, userId, onPredictionSaved
                   <span className="text-red-400 font-semibold text-[11px] sm:text-xs italic">Sin pronóstico</span>
                 )}
               </span>
-              {prediction?.predictedAdvancingTeam && (
+              {prediction?.predictedAdvancingTeam && prediction.predictedScoreA === prediction.predictedScoreB && (
                 <span className="text-[10px] text-foreground/50 italic">
                   Avanza {prediction.predictedAdvancingTeam}
                 </span>
@@ -406,7 +410,7 @@ export default function MatchCard({ match, prediction, userId, onPredictionSaved
                               {hasPrediction ? (
                                 <div className="flex flex-col items-end">
                                   <span>{pred.predictedScoreA} - {pred.predictedScoreB}</span>
-                                  {pred.predictedAdvancingTeam && (
+                                  {pred.predictedAdvancingTeam && pred.predictedScoreA === pred.predictedScoreB && (
                                     <span className="text-[8px] text-foreground/50 font-normal">
                                       ({pred.predictedAdvancingTeam} avanza)
                                     </span>
